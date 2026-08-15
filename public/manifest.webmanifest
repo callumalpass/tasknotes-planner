@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "TaskNotes Planner",
+  "short_name": "Planner",
+  "description": "A Gantt planner for TaskNotes collections.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbfcfe",
+  "theme_color": "#fbfcfe",
+  "icons": []
+}

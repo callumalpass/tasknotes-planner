@@ -1,0 +1,32 @@
+{
+  "manifest_version": 1,
+  "id": "dev.tasknotes.planner",
+  "name": "TaskNotes Planner",
+  "homepage": "https://planner.tasknotes.dev/",
+  "icon": "https://planner.tasknotes.dev/tasknotes-mark.svg",
+  "redirect_uris": [
+    "https://planner.tasknotes.dev/auth/mdbase/callback",
+    "http://127.0.0.1:4174/auth/mdbase/callback",
+    "http://localhost:4174/auth/mdbase/callback"
+  ],
+  "requirements": {
+    "contracts": [
+      {
+        "id": "tasknotes.task",
+        "version": "0.3.0-rc.3",
+        "digest": "sha256:48b9017ac0896ffbdee4d14fc0325ef86916bf8789da4ac8a4cd246435887155"
+      }
+    ],
+    "capabilities": {
+      "contract_version": 1,
+      "required": [
+        "collection.inspect",
+        "records.watch",
+        "records.read",
+        "records.query",
+        "records.update"
+      ]
+    },
+    "access": "contract"
+  }
+}
