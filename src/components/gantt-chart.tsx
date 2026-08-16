@@ -120,11 +120,12 @@ export function GanttChart({
   const [completionPending, setCompletionPending] = useState<Set<string>>(
     () => new Set(),
   );
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
   const today = dateFromDate(new Date());
   const now = new Date();
   const scale = useMemo(
-    () => timelineScale(tasks, zoom, today),
-    [tasks, today, zoom],
+    () => timelineScale(tasks, zoom, today, timelineViewportWidth),
+    [tasks, timelineViewportWidth, today, zoom],
   );
   const previousScale = useRef(scale);
   const rows = useMemo(() => groupTasks(tasks), [tasks]);
@@ -143,6 +144,22 @@ export function GanttChart({
     scale.intraday ? currentMinute : planningMinute(today)!,
     scale.cellWidth,
   );
+
+  useLayoutEffect(() => {
+    const surface = scroller.current;
+    if (!surface) return;
+    const updateWidth = () => {
+      const width = Math.max(0, surface.clientWidth - taskColumnWidth(surface));
+      setTimelineViewportWidth((current) =>
+        Math.abs(current - width) < 1 ? current : width,
+      );
+    };
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     const surface = scroller.current;

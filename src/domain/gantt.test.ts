@@ -91,6 +91,13 @@ describe("timelineScale", () => {
       snapMinutes: 15,
     });
   });
+
+  it("extends coarse scales to fill a wide timeline viewport", () => {
+    const scale = timelineScale([], 0, "2026-08-16", 3_000);
+
+    expect(scale.days.length * scale.cellWidth).toBeGreaterThanOrEqual(3_000);
+    expect(scale.start).toBe("2026-02-02");
+  });
 });
 
 describe("schedule manipulation", () => {

@@ -125,6 +125,7 @@ export function timelineScale(
   tasks: readonly PlannerTask[],
   zoom: TimelineZoom,
   today = dateFromDate(new Date()),
+  minimumTimelineWidth = 0,
 ): TimelineScale {
   const dates = tasks.flatMap((task) => {
     const span = taskSpan(task);
@@ -142,7 +143,11 @@ export function timelineScale(
   const start = bounds.intraday
     ? addDays(earliest, -1)
     : startOfWeek(addDays(earliest, -7));
-  const end = addDays(latest, bounds.intraday ? 1 : 21);
+  const defaultEnd = addDays(latest, bounds.intraday ? 1 : 21);
+  const minimumDayCount = Math.ceil(minimumTimelineWidth / bounds.cellWidth);
+  const minimumEnd = addDays(start, Math.max(0, minimumDayCount - 1));
+  const end =
+    compareDates(minimumEnd, defaultEnd) > 0 ? minimumEnd : defaultEnd;
   return {
     start,
     end,
