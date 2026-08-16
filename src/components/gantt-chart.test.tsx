@@ -31,6 +31,85 @@ beforeEach(() => {
 });
 
 describe("GanttChart interactions", () => {
+  it("uses Ctrl+wheel for chart zoom without allowing Chrome page zoom", () => {
+    const task = makeTask({
+      id: "zoomable",
+      title: "Zoomable task",
+      scheduled: "2026-08-17",
+      due: "2026-08-18",
+    });
+    const onZoom = vi.fn();
+    const addEventListener = vi.spyOn(
+      HTMLElement.prototype,
+      "addEventListener",
+    );
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+        onSelect={() => undefined}
+        onZoom={onZoom}
+      />,
+    );
+
+    expect(addEventListener).toHaveBeenCalledWith(
+      "wheel",
+      expect.any(Function),
+      {
+        passive: false,
+      },
+    );
+
+    const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 600,
+      ctrlKey: true,
+      deltaY: -100,
+    });
+    surface.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onZoom).toHaveBeenCalledWith(1);
+  });
+
+  it("leaves ordinary chart scrolling to the browser", () => {
+    const task = makeTask({ id: "scrollable", title: "Scrollable task" });
+    const onZoom = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+        onSelect={() => undefined}
+        onZoom={onZoom}
+      />,
+    );
+
+    const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 100,
+    });
+    surface.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(onZoom).not.toHaveBeenCalled();
+  });
+
   it("places an unscheduled task on the timeline by dragging", async () => {
     const task = makeTask({ id: "unscheduled", title: "Unscheduled" });
     const onScheduleChange = vi.fn().mockResolvedValue(undefined);
