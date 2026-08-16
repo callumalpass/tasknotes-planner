@@ -14,6 +14,26 @@ describe("MdbasePlannerRepository", () => {
         document: input.document,
       }),
     );
+    const update = vi.fn(async (input: { patch: JsonObject }) =>
+      success({
+        path: "tasks/plan.md",
+        revision: "task-2",
+        types: ["task"],
+        contract: {
+          id: "tasknotes.task",
+          version: "0.3.0-rc.3",
+          type: "task",
+        },
+        effectiveFrontmatter: {
+          id: "plan",
+          title: "Plan launch",
+          status: input.patch.status,
+          priority: "normal",
+          projects: input.patch.projects,
+          completedDate: input.patch.completedDate,
+        },
+      }),
+    );
     const connection = {
       describe: vi.fn(async () =>
         success({
@@ -88,8 +108,37 @@ describe("MdbasePlannerRepository", () => {
         success({ views: [], meta: { totalCount: 0 } }),
       ),
       queryAll: vi.fn(async () =>
-        success({ results: [], meta: { totalCount: 0, hasMore: false } }),
+        success({
+          results: [
+            {
+              path: "tasks/plan.md",
+              revision: "task-1",
+              types: ["task"],
+              effectiveFrontmatter: {
+                id: "plan",
+                title: "Plan launch",
+                status: "open",
+                priority: "normal",
+              },
+            },
+          ],
+          meta: { totalCount: 1, hasMore: false },
+        }),
       ),
+      read: vi.fn(async () =>
+        success({
+          path: "tasks/plan.md",
+          revision: "task-1",
+          types: ["task"],
+          effectiveFrontmatter: {
+            id: "plan",
+            title: "Plan launch",
+            status: "open",
+            priority: "normal",
+          },
+        }),
+      ),
+      update,
       createViewSource,
     } as unknown as MdbaseConnection<JsonObject>;
     const repository = new MdbasePlannerRepository(connection);
@@ -99,6 +148,25 @@ describe("MdbasePlannerRepository", () => {
       { value: "open", label: "Open", isCompleted: false },
       { value: "done", label: "Done", isCompleted: true },
     ]);
+    const completed = await repository.toggleCompletion(collection.tasks[0]);
+    expect(completed).toMatchObject({ status: "done", completed: true });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patch: expect.objectContaining({
+          status: "done",
+          completedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      }),
+    );
+    const regrouped = await repository.updateProperties(collection.tasks[0], {
+      projects: ["[[Launch]]"],
+    });
+    expect(regrouped.projects).toEqual(["[[Launch]]"]);
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        patch: expect.objectContaining({ projects: ["[[Launch]]"] }),
+      }),
+    );
     await repository.saveView({
       name: "High work",
       status: "open",

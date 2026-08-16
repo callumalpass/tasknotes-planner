@@ -72,6 +72,51 @@ describe("TaskInspector", () => {
     );
   });
 
+  it("adds and clears TaskNotes project memberships", async () => {
+    const launch = {
+      ...task,
+      id: "launch",
+      path: "tasks/launch.md",
+      title: "Launch task",
+      projects: ["[[Launch]]"],
+    };
+    const onSaveProperties = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[task, launch]}
+        task={task}
+        onClose={() => undefined}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+        onSaveProperties={onSaveProperties}
+      />,
+    );
+
+    expect(
+      screen.getByRole("checkbox", { name: /Product planning/ }),
+    ).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Launch" }));
+    await waitFor(() =>
+      expect(onSaveProperties).toHaveBeenCalledWith(task, {
+        projects: ["[[Product planning]]", "[[Launch]]"],
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use Launch as planning group" }),
+    );
+    await waitFor(() =>
+      expect(onSaveProperties).toHaveBeenLastCalledWith(task, {
+        projects: ["[[Launch]]", "[[Product planning]]"],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Move to Unassigned" }));
+    await waitFor(() =>
+      expect(onSaveProperties).toHaveBeenLastCalledWith(task, { projects: [] }),
+    );
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
+
   it("saves canonical date-only schedule values", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onSaveDependencies = vi.fn().mockResolvedValue(undefined);

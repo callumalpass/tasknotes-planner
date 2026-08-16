@@ -86,6 +86,7 @@ export interface ScheduleUpdate {
 export interface TaskPropertyUpdate {
   status?: string;
   priority?: string;
+  projects?: string[];
 }
 
 export interface PlannerRepository {
@@ -102,6 +103,7 @@ export interface PlannerRepository {
     task: PlannerTask,
     update: TaskPropertyUpdate,
   ): Promise<PlannerTask>;
+  toggleCompletion(task: PlannerTask): Promise<PlannerTask>;
   saveView(input: SavePlannerViewInput): Promise<PlannerView>;
   watch?(listener: () => void): Promise<() => void>;
 }

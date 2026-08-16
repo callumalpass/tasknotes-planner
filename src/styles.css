@@ -689,16 +689,54 @@ select:focus-visible {
   background: var(--paper);
 }
 
-button.task-ledger {
+.task-row .task-ledger {
   width: var(--task-column);
-  gap: 10px;
-  padding: 0 13px 0 19px;
-  text-align: left;
 }
 
-button.task-ledger:hover,
+.task-row .task-ledger:hover,
 .task-row.is-selected .task-ledger {
   background: var(--accent-soft);
+}
+
+.completion-control,
+.task-ledger-main {
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.completion-control {
+  width: 47px;
+  flex: 0 0 47px;
+  display: grid;
+  place-items: center;
+  padding: 0 0 0 5px;
+}
+
+.completion-control:not([disabled]):not([aria-disabled="true"]):hover
+  .completion-mark,
+.completion-control:focus-visible .completion-mark {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+
+.completion-control[aria-disabled="true"] {
+  cursor: help;
+}
+
+.completion-control[aria-disabled="true"] .completion-mark {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.task-ledger-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px 0 0;
+  text-align: left;
 }
 
 .group-ledger {
@@ -1159,6 +1197,110 @@ button.task-ledger:hover,
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--paper);
+}
+
+.project-field {
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.project-field legend {
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.project-field > p:not(.project-unassigned) {
+  margin: 4px 0 10px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.project-options {
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper);
+}
+
+.project-option {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.project-option:last-child {
+  border-bottom: 0;
+}
+
+.project-option:hover {
+  background: var(--accent-soft);
+}
+
+.project-option label {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.project-options input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.project-options label > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-options small {
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.project-option > button {
+  padding: 4px 0 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.project-clear {
+  min-height: 34px;
+  margin-top: 7px;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.project-unassigned {
+  margin: 7px 0 0;
+  padding: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .planner-dialog-backdrop {

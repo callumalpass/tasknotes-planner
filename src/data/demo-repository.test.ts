@@ -20,6 +20,19 @@ describe("DemoPlannerRepository", () => {
       priorityLabel: "Low",
     });
 
+    const completed = await repository.toggleCompletion(updated);
+    expect(completed).toMatchObject({
+      status: "done",
+      statusLabel: "Done",
+      completed: true,
+    });
+    const reopened = await repository.toggleCompletion(completed);
+    expect(reopened).toMatchObject({ status: "open", completed: false });
+    const regrouped = await repository.updateProperties(reopened, {
+      projects: ["[[Launch]]", "[[Operations]]"],
+    });
+    expect(regrouped.projects).toEqual(["[[Launch]]", "[[Operations]]"]);
+
     const view = await repository.saveView({
       name: "Launch sequence",
       zoom: 4,

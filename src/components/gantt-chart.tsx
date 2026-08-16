@@ -85,6 +85,7 @@ export function GanttChart({
   onZoom,
   onScheduleChange,
   onDependenciesChange,
+  onCompletionChange,
 }: {
   tasks: readonly PlannerTask[];
   allTasks: readonly PlannerTask[];
@@ -94,6 +95,7 @@ export function GanttChart({
   onSelect(task: PlannerTask): void;
   onZoom(direction: -1 | 1): void;
   onScheduleChange(task: PlannerTask, update: ScheduleUpdate): Promise<void>;
+  onCompletionChange(task: PlannerTask): Promise<void>;
   onDependenciesChange(
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
@@ -115,6 +117,9 @@ export function GanttChart({
   const [linkDrag, setLinkDrag] = useState<LinkDrag | null>(null);
   const [interactionMessage, setInteractionMessage] =
     useState<InteractionMessage | null>(null);
+  const [completionPending, setCompletionPending] = useState<Set<string>>(
+    () => new Set(),
+  );
   const today = dateFromDate(new Date());
   const now = new Date();
   const scale = useMemo(
@@ -231,6 +236,48 @@ export function GanttChart({
         },
         5_000,
       );
+    }
+  }
+
+  async function commitCompletion(task: PlannerTask) {
+    if (task.recurrence) {
+      showMessage(
+        {
+          tone: "neutral",
+          text: "Complete recurring tasks in TaskNotes, where you can choose an occurrence.",
+        },
+        4_500,
+      );
+      return;
+    }
+    setCompletionPending((current) => new Set(current).add(task.id));
+    showMessage(
+      {
+        tone: "neutral",
+        text: task.completed ? "Reopening task…" : "Completing task…",
+      },
+      10_000,
+    );
+    try {
+      await onCompletionChange(task);
+      showMessage({
+        tone: "success",
+        text: task.completed ? "Task reopened" : "Task completed",
+      });
+    } catch (reason) {
+      showMessage(
+        {
+          tone: "danger",
+          text: `Task not changed. ${errorMessage(reason)}`,
+        },
+        5_000,
+      );
+    } finally {
+      setCompletionPending((current) => {
+        const next = new Set(current);
+        next.delete(task.id);
+        return next;
+      });
     }
   }
 
@@ -525,9 +572,11 @@ export function GanttChart({
                   row={row}
                   scale={scale}
                   selected={selectedId === row.task.id}
+                  completionPending={completionPending.has(row.task.id)}
                   suppressClickRef={suppressClick}
                   timelineWidth={timelineWidth}
                   onBeginLink={beginLink}
+                  onCompletionChange={commitCompletion}
                   onBeginScheduleDrag={beginScheduleDrag}
                   onCancelLink={cancelLink}
                   onCancelScheduleDrag={cancelScheduleDrag}
@@ -718,10 +767,12 @@ function TaskRow({
   timelineWidth,
   scale,
   selected,
+  completionPending,
   preview,
   linkDrag,
   suppressClickRef,
   onSelect,
+  onCompletionChange,
   onBeginScheduleDrag,
   onMoveScheduleDrag,
   onEndScheduleDrag,
@@ -736,10 +787,12 @@ function TaskRow({
   timelineWidth: number;
   scale: ReturnType<typeof timelineScale>;
   selected: boolean;
+  completionPending: boolean;
   preview?: ScheduleUpdate;
   linkDrag: LinkDrag | null;
   suppressClickRef: MutableRefObject<boolean>;
   onSelect(task: PlannerTask): void;
+  onCompletionChange(task: PlannerTask): void;
   onBeginScheduleDrag(
     event: ReactPointerEvent<HTMLElement>,
     task: PlannerTask,
@@ -799,31 +852,54 @@ function TaskRow({
       className={`gantt-row task-row${selected ? " is-selected" : ""}`}
       style={{ height: TASK_HEIGHT }}
     >
-      <button className="task-ledger" type="button" onClick={select}>
-        <span
-          className={`completion-mark${row.task.completed ? " is-complete" : ""}`}
+      <div className="task-ledger">
+        <button
+          aria-busy={completionPending || undefined}
+          aria-disabled={row.task.recurrence ? "true" : undefined}
+          aria-label={
+            row.task.recurrence
+              ? `Completion unavailable for recurring task ${row.task.title}`
+              : `${row.task.completed ? "Reopen" : "Complete"} ${row.task.title}`
+          }
+          className="completion-control"
+          disabled={completionPending}
+          title={
+            row.task.recurrence
+              ? "Complete recurring tasks in TaskNotes, where you can choose an occurrence."
+              : row.task.completed
+                ? "Reopen task"
+                : "Complete task"
+          }
+          type="button"
+          onClick={() => onCompletionChange(row.task)}
         >
-          {row.task.completed ? <Check aria-hidden="true" size={12} /> : null}
-        </span>
-        <span className="ledger-title">
-          <strong>{row.task.title}</strong>
-          <small>{scheduleLabel(task)}</small>
-        </span>
-        <span
-          aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
-          className="ledger-state"
-          title={`${row.task.statusLabel} · ${row.task.priorityLabel} priority`}
-        >
-          <i style={{ background: row.task.statusColor }} />
-          <i style={{ background: row.task.priorityColor }} />
-        </span>
-        {row.task.blockedBy.length ? (
-          <GitBranch
-            aria-label={`${row.task.blockedBy.length} dependencies`}
-            size={14}
-          />
-        ) : null}
-      </button>
+          <span
+            className={`completion-mark${row.task.completed ? " is-complete" : ""}`}
+          >
+            {row.task.completed ? <Check aria-hidden="true" size={12} /> : null}
+          </span>
+        </button>
+        <button className="task-ledger-main" type="button" onClick={select}>
+          <span className="ledger-title">
+            <strong>{row.task.title}</strong>
+            <small>{scheduleLabel(task)}</small>
+          </span>
+          <span
+            aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
+            className="ledger-state"
+            title={`${row.task.statusLabel} · ${row.task.priorityLabel} priority`}
+          >
+            <i style={{ background: row.task.statusColor }} />
+            <i style={{ background: row.task.priorityColor }} />
+          </span>
+          {row.task.blockedBy.length ? (
+            <GitBranch
+              aria-label={`${row.task.blockedBy.length} dependencies`}
+              size={14}
+            />
+          ) : null}
+        </button>
+      </div>
       <div
         className={`timeline-row${scale.intraday ? " is-intraday" : ""}`}
         style={timelineRowStyle(scale, timelineWidth)}

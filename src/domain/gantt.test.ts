@@ -215,7 +215,7 @@ describe("groupTasks", () => {
     ]);
     expect(
       rows.map((row) => (row.kind === "group" ? row.label : row.task.title)),
-    ).toEqual(["Launch", "First", "Later", "No project", "Loose"]);
+    ).toEqual(["Launch", "First", "Later", "Unassigned", "Loose"]);
   });
 });
 

@@ -431,7 +431,7 @@ export function groupTasks(tasks: readonly PlannerTask[]): GanttRow[] {
   const groups = new Map<string, { label: string; tasks: PlannerTask[] }>();
   for (const task of tasks) {
     const raw = task.projects[0];
-    const label = raw ? projectLabel(raw) : "No project";
+    const label = raw ? projectLabel(raw) : "Unassigned";
     const key = raw ? `project:${label.toLocaleLowerCase()}` : "unassigned";
     const group = groups.get(key) ?? { label, tasks: [] };
     group.tasks.push(task);

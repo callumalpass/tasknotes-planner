@@ -112,6 +112,16 @@ export class DemoPlannerRepository implements PlannerRepository {
     return structuredClone(saved);
   }
 
+  async toggleCompletion(task: PlannerTask): Promise<PlannerTask> {
+    if (task.recurrence)
+      throw new Error(
+        "Complete recurring tasks in TaskNotes, where you can choose an occurrence.",
+      );
+    return this.updateProperties(task, {
+      status: task.completed ? "open" : "done",
+    });
+  }
+
   async saveView(input: SavePlannerViewInput): Promise<PlannerView> {
     const existing = input.view;
     const id = slug(input.name);

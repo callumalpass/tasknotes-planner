@@ -42,6 +42,7 @@ describe("GanttChart interactions", () => {
         todayRequest={0}
         zoom={3}
         onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
         onScheduleChange={onScheduleChange}
         onSelect={() => undefined}
         onZoom={() => undefined}
@@ -76,6 +77,7 @@ describe("GanttChart interactions", () => {
         todayRequest={0}
         zoom={7}
         onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
         onScheduleChange={onScheduleChange}
         onSelect={() => undefined}
         onZoom={() => undefined}
@@ -122,6 +124,7 @@ describe("GanttChart interactions", () => {
         todayRequest={0}
         zoom={3}
         onDependenciesChange={onDependenciesChange}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
         onScheduleChange={vi.fn().mockResolvedValue(undefined)}
         onSelect={() => undefined}
         onZoom={() => undefined}
@@ -178,6 +181,7 @@ describe("GanttChart interactions", () => {
         todayRequest={0}
         zoom={7}
         onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
         onScheduleChange={onScheduleChange}
         onSelect={() => undefined}
         onZoom={() => undefined}
@@ -199,5 +203,66 @@ describe("GanttChart interactions", () => {
         due: "2026-08-17T11:30:00",
       }),
     );
+  });
+
+  it("completes a task without opening its inspector", async () => {
+    const task = makeTask({ id: "complete-me", title: "Complete me" });
+    const onCompletionChange = vi.fn().mockResolvedValue(undefined);
+    const onSelect = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onCompletionChange={onCompletionChange}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+        onSelect={onSelect}
+        onZoom={() => undefined}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete Complete me" }),
+    );
+
+    await waitFor(() => expect(onCompletionChange).toHaveBeenCalledWith(task));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps recurring-series completion in TaskNotes", () => {
+    const task = makeTask({
+      id: "recurring",
+      title: "Recurring review",
+      recurrence: "RRULE:FREQ=WEEKLY",
+    });
+    const onCompletionChange = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onCompletionChange={onCompletionChange}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+        onSelect={() => undefined}
+        onZoom={() => undefined}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Completion unavailable for recurring task Recurring review",
+      }),
+    );
+
+    expect(onCompletionChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Complete recurring tasks in TaskNotes/),
+    ).toBeInTheDocument();
   });
 });

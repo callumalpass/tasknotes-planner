@@ -20,6 +20,7 @@ import {
 } from "@tasknotes/model/operations";
 import {
   DEFAULT_FIELD_MAPPING,
+  getDefaultCompletedStatus,
   TASKNOTES_SPEC_VERSION,
   type StatusConfig,
 } from "@tasknotes/model";
@@ -165,6 +166,7 @@ export class MdbasePlannerRepository implements PlannerRepository {
       updates: {
         ...(update.status === undefined ? {} : { status: update.status }),
         ...(update.priority === undefined ? {} : { priority: update.priority }),
+        ...(update.projects === undefined ? {} : { projects: update.projects }),
       },
       fieldMapping: DEFAULT_FIELD_MAPPING,
       statuses: modelStatuses(config.statuses),
@@ -172,11 +174,38 @@ export class MdbasePlannerRepository implements PlannerRepository {
     });
     const next = taskInfoToSpecFields(plan.updatedTask);
     const patch: JsonObject = {};
-    for (const field of ["status", "priority", "completedDate"] as const) {
+    for (const field of [
+      "status",
+      "priority",
+      "projects",
+      "completedDate",
+    ] as const) {
       if (values[field] === next[field]) continue;
       patch[field] = (next[field] ?? null) as JsonObject[string];
     }
     return this.persistTask(task, current.revision, selector, patch);
+  }
+
+  async toggleCompletion(task: PlannerTask): Promise<PlannerTask> {
+    if (task.recurrence)
+      throw new Error(
+        "Complete recurring tasks in TaskNotes, where you can choose an occurrence.",
+      );
+    const config = task.providerType
+      ? this.taskTypes.get(task.providerType)
+      : undefined;
+    if (!config)
+      throw new Error("This task type does not expose TaskNotes settings.");
+    const completedStatus = getDefaultCompletedStatus(
+      modelStatuses(config.statuses),
+    );
+    if (!config.statuses.some(({ value }) => value === completedStatus))
+      throw new Error(
+        "This task type does not define a completed TaskNotes status.",
+      );
+    return this.updateProperties(task, {
+      status: task.completed ? config.defaultStatus : completedStatus,
+    });
   }
 
   async saveView(input: SavePlannerViewInput): Promise<PlannerView> {

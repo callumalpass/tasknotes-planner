@@ -14,6 +14,7 @@ import {
   datePart,
   dependencyReferencesTask,
   planningMinute,
+  projectLabel,
   replaceDateAndTime,
   resolveDependencyTask,
   timePart,
@@ -63,6 +64,7 @@ export function TaskInspector({
   const [dependencyError, setDependencyError] = useState("");
   const [status, setStatus] = useState(task.status);
   const [priority, setPriority] = useState(task.priority);
+  const [projects, setProjects] = useState(task.projects);
   const [propertySaving, setPropertySaving] = useState(false);
   const [propertyError, setPropertyError] = useState("");
 
@@ -97,6 +99,18 @@ export function TaskInspector({
           canAddDependency(allTasks, candidate.id, task.id).allowed,
       ),
     [allTasks, task.blockedBy, task.id],
+  );
+  const projectOptions = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...task.projects,
+          ...allTasks.flatMap((item) => item.projects),
+        ]),
+      ]
+        .map((value) => ({ value, label: projectLabel(value) }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [allTasks, task.projects],
   );
 
   async function submit(event: FormEvent) {
@@ -154,6 +168,7 @@ export function TaskInspector({
     } catch (reason) {
       setStatus(task.status);
       setPriority(task.priority);
+      setProjects(task.projects);
       setPropertyError(errorMessage(reason));
     } finally {
       setPropertySaving(false);
@@ -224,6 +239,71 @@ export function TaskInspector({
             ))}
           </select>
         </label>
+        <fieldset className="project-field" disabled={propertySaving}>
+          <legend>Projects</legend>
+          <p>Planner groups tasks by their first selected project.</p>
+          {projectOptions.length ? (
+            <div className="project-options">
+              {projectOptions.map((option) => {
+                const checked = projects.includes(option.value);
+                return (
+                  <div className="project-option" key={option.value}>
+                    <label>
+                      <input
+                        checked={checked}
+                        type="checkbox"
+                        onChange={(event) => {
+                          const next = event.target.checked
+                            ? [...projects, option.value]
+                            : projects.filter(
+                                (value) => value !== option.value,
+                              );
+                          setProjects(next);
+                          void saveProperty({ projects: next });
+                        }}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                    {projects[0] === option.value ? (
+                      <small>Planning group</small>
+                    ) : checked ? (
+                      <button
+                        aria-label={`Use ${option.label} as planning group`}
+                        type="button"
+                        onClick={() => {
+                          const next = [
+                            option.value,
+                            ...projects.filter(
+                              (value) => value !== option.value,
+                            ),
+                          ];
+                          setProjects(next);
+                          void saveProperty({ projects: next });
+                        }}
+                      >
+                        Group here
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {projects.length ? (
+            <button
+              className="project-clear"
+              type="button"
+              onClick={() => {
+                setProjects([]);
+                void saveProperty({ projects: [] });
+              }}
+            >
+              Move to Unassigned
+            </button>
+          ) : (
+            <p className="project-unassigned">Unassigned</p>
+          )}
+        </fieldset>
         {propertyError ? (
           <p className="form-error" role="alert">
             {propertyError}

@@ -192,6 +192,11 @@ export function Planner({
     setCollection((current) => replaceCollectionTask(current, saved));
   }
 
+  async function toggleCompletion(task: PlannerTask) {
+    const saved = await repository.toggleCompletion(task);
+    setCollection((current) => replaceCollectionTask(current, saved));
+  }
+
   function chooseView(key: string) {
     const next = key || null;
     setActiveViewKey(next);
@@ -425,6 +430,7 @@ export function Planner({
         todayRequest={todayRequest}
         zoom={zoom}
         onDependenciesChange={saveDependencies}
+        onCompletionChange={toggleCompletion}
         onScheduleChange={saveSchedule}
         onSelect={(task) => setSelectedId(task.id)}
         onZoom={(direction) => setZoom((value) => clampZoom(value + direction))}
