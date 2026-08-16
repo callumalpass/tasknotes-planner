@@ -20,6 +20,10 @@ wide-screen sequencing and schedule review.
 
 Planner reads and updates these values through the canonical TaskNotes contract;
 it does not depend on TaskNotes' application source or a second local task copy.
+During authorization, Planner can provision the shared `core-lite` TaskNotes
+type pack from `@tasknotes/model`. This lets mdbase bring older collection
+definitions up to the required contract digest while preserving an existing
+customized task type.
 
 Status and priority choices come from each implementing task type's
 `tasknotes.task` binding, including labels, colours, ordering, defaults, and
@@ -105,7 +109,8 @@ mutated only through `tasknotes.task`. Planner requests only the capabilities
 it uses:
 
 - inspect the collection contract
-- apply the declared Base-source include setting during authorization
+- apply the shared TaskNotes type pack and declared Base-source include setting
+  during authorization
 - query and read TaskNotes records
 - watch for collection changes
 - update TaskNotes records

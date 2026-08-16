@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildPlannerManifest } from "./planner-manifest.mjs";
 
 describe("Planner mdbase manifest", () => {
-  it("keeps production callbacks restricted to the production origin", () => {
-    const manifest = buildPlannerManifest({
+  it("keeps production callbacks restricted to the production origin", async () => {
+    const manifest = await buildPlannerManifest({
       appUrl: "https://planner.tasknotes.dev",
     });
     expect(manifest.homepage).toBe("https://planner.tasknotes.dev/");
@@ -16,11 +16,31 @@ describe("Planner mdbase manifest", () => {
       capabilities: {
         required: expect.arrayContaining([
           "collection.setup.apply",
+          "definitions.update",
+          "definitions.type-pack.apply",
           "views.execute",
         ]),
       },
     });
-    expect(manifest.provisions).toMatchObject({ type_packs: [] });
+    expect(manifest.provisions.type_packs).toHaveLength(1);
+    expect(manifest.provisions.type_packs[0]).toMatchObject({
+      manifest: {
+        id: "tasknotes.task",
+        resources: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "contract",
+            mode: "managed",
+            target: "_contracts/tasknotes.task.md",
+          }),
+          expect.objectContaining({
+            kind: "type",
+            mode: "seed",
+            target: "_types/task.md",
+          }),
+        ]),
+      },
+      provides: manifest.requirements.contracts,
+    });
     expect(manifest.provisions.configuration).toEqual([
       expect.objectContaining({
         requirement: "tasknotes-planner-base-sources",
@@ -29,8 +49,8 @@ describe("Planner mdbase manifest", () => {
     ]);
   });
 
-  it("adds both supported loopback callbacks only for development", () => {
-    const manifest = buildPlannerManifest({
+  it("adds both supported loopback callbacks only for development", async () => {
+    const manifest = await buildPlannerManifest({
       appUrl: "http://127.0.0.1:4174",
       development: true,
     });
