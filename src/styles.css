@@ -175,6 +175,11 @@ select:focus-visible {
   line-height: 0.94;
 }
 
+.setup-welcome h1 {
+  font-size: clamp(44px, 5vw, 72px);
+  line-height: 0.98;
+}
+
 .welcome-lede {
   max-width: 490px;
   margin: 0;
@@ -238,6 +243,97 @@ select:focus-visible {
   background: var(--paper-raised);
   box-shadow: var(--shadow);
   transform: rotate(-1.2deg);
+}
+
+.setup-review {
+  width: min(720px, 58vw);
+  min-width: 520px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow);
+}
+
+.setup-review > header {
+  min-height: 63px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.setup-review > header span,
+.setup-change-list small {
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.setup-review > header strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-summary {
+  padding: 27px 20px 22px;
+}
+
+.setup-summary h2 {
+  margin: 0 0 7px;
+  font-size: 22px;
+}
+
+.setup-summary p {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.setup-change-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.setup-change-list li {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-change-list li > span {
+  color: var(--accent);
+  font-family: "Azeret Mono", monospace;
+  font-size: 18px;
+}
+
+.setup-change-list li > div {
+  min-width: 0;
+}
+
+.setup-change-list strong,
+.setup-change-list small {
+  display: block;
+}
+
+.setup-change-list small {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.setup-conflict {
+  margin: 18px 20px;
+  color: var(--danger);
 }
 
 .preview-topline,
@@ -1609,6 +1705,12 @@ select:focus-visible {
     width: 720px;
     margin-top: 70px;
     transform: translateX(7vw) rotate(-1.2deg);
+  }
+
+  .setup-review {
+    width: 100%;
+    min-width: 0;
+    margin-top: 56px;
   }
 
   .planner-header {

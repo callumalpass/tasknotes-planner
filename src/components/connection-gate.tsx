@@ -1,4 +1,4 @@
-import { Database, LoaderCircle } from "lucide-react";
+import { Check, Database, LoaderCircle } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,6 +13,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
+import type { MdbaseApplicationSessionSnapshot } from "@mdbase-dev/connect";
 
 import { isAuthorizationCallback, plannerSession } from "../data/connect";
 import { MdbasePlannerRepository } from "../data/mdbase-repository";
@@ -77,6 +78,34 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
     }
   }, []);
 
+  const applySetup = useCallback(async () => {
+    setOpening(true);
+    setError("");
+    try {
+      requireOutcome(
+        await plannerSession.applyCollectionSetup({ timeoutMs: 60_000 }),
+      );
+    } catch (reason) {
+      setError(connectionErrorMessage(reason));
+    } finally {
+      setOpening(false);
+    }
+  }, []);
+
+  const reauthorize = useCallback(async () => {
+    setOpening(true);
+    setError("");
+    try {
+      requireOutcome(
+        await plannerSession.authorize("selected", { timeoutMs: 60_000 }),
+      );
+    } catch (reason) {
+      setError(connectionErrorMessage(reason));
+    } finally {
+      setOpening(false);
+    }
+  }, []);
+
   if (repository)
     return (
       <Planner
@@ -92,34 +121,98 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
         ? unavailableMessage(snapshot.reason)
         : "";
 
+  const isWaiting =
+    snapshot.status === "opening" || snapshot.status === "checking_setup";
+
   return (
-    <main className="welcome">
+    <main
+      className={`welcome${snapshot.status === "setup_review_required" ? " setup-welcome" : ""}`}
+    >
       <section className="welcome-intro">
         <div className="brand-lockup">
           <img alt="" src="/tasknotes-mark.svg" />
           <span>TaskNotes Planner</span>
         </div>
-        <h1>Plan tasks on a timeline.</h1>
-        <p className="welcome-lede">
-          Open a TaskNotes collection to change dates and manage dependencies.
-        </p>
+        {snapshot.status === "setup_review_required" ? (
+          <>
+            <h1>Finish opening this collection.</h1>
+            <p className="welcome-lede">
+              Review the TaskNotes files and settings Planner needs, then apply
+              them to continue.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1>Plan tasks on a timeline.</h1>
+            <p className="welcome-lede">
+              Open a TaskNotes collection to change dates and manage
+              dependencies.
+            </p>
+          </>
+        )}
         <div className="welcome-actions">
-          <button
-            className="primary-action"
-            disabled={opening}
-            type="button"
-            onClick={() => void authorize()}
-          >
-            {opening ? (
-              <LoaderCircle aria-hidden="true" className="spin" size={18} />
-            ) : (
-              <Database aria-hidden="true" size={18} />
-            )}
-            {opening ? "Opening…" : "Open collection"}
-          </button>
+          {snapshot.status === "setup_review_required" ? (
+            <button
+              className="primary-action"
+              disabled={opening || !snapshot.update.canApply}
+              type="button"
+              onClick={() => void applySetup()}
+            >
+              {opening ? (
+                <LoaderCircle aria-hidden="true" className="spin" size={18} />
+              ) : (
+                <Check aria-hidden="true" size={18} />
+              )}
+              {opening ? "Applying setup…" : "Apply setup and open"}
+            </button>
+          ) : snapshot.status === "authorization_required" ? (
+            <button
+              className="primary-action"
+              disabled={opening}
+              type="button"
+              onClick={() => void reauthorize()}
+            >
+              {opening ? (
+                <LoaderCircle aria-hidden="true" className="spin" size={18} />
+              ) : (
+                <Database aria-hidden="true" size={18} />
+              )}
+              {opening ? "Opening…" : "Review access"}
+            </button>
+          ) : (
+            <button
+              className="primary-action"
+              disabled={opening || isWaiting}
+              type="button"
+              onClick={() => void authorize()}
+            >
+              {opening || isWaiting ? (
+                <LoaderCircle aria-hidden="true" className="spin" size={18} />
+              ) : (
+                <Database aria-hidden="true" size={18} />
+              )}
+              {opening
+                ? "Opening…"
+                : snapshot.status === "checking_setup"
+                  ? "Checking setup…"
+                  : snapshot.status === "opening"
+                    ? "Loading…"
+                    : "Open collection"}
+            </button>
+          )}
           <button className="text-action" type="button" onClick={onDemo}>
             Use sample tasks
           </button>
+          {snapshot.status === "setup_review_required" ? (
+            <button
+              className="text-action"
+              disabled={opening}
+              type="button"
+              onClick={() => void authorize()}
+            >
+              Choose another collection
+            </button>
+          ) : null}
         </div>
         {error || stateError ? (
           <p className="error-notice" role="alert">
@@ -127,8 +220,78 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
           </p>
         ) : null}
       </section>
-      <WelcomePreview />
+      {snapshot.status === "setup_review_required" ? (
+        <SetupReview snapshot={snapshot} />
+      ) : (
+        <WelcomePreview />
+      )}
     </main>
+  );
+}
+
+type SetupReviewSnapshot = Extract<
+  MdbaseApplicationSessionSnapshot,
+  { status: "setup_review_required" }
+>;
+
+export function SetupReview({ snapshot }: { snapshot: SetupReviewSnapshot }) {
+  const changes = snapshot.update.configuration.filter(
+    (item) => item.action !== "current",
+  );
+
+  return (
+    <section aria-labelledby="setup-review-title" className="setup-review">
+      <header>
+        <span>COLLECTION SETUP</span>
+        <strong>{snapshot.info.displayName}</strong>
+      </header>
+      <div className="setup-summary">
+        <h2 id="setup-review-title">Changes to apply</h2>
+        <p>
+          Task records, custom types, and unrelated collection settings will
+          stay as they are.
+        </p>
+      </div>
+      <ul className="setup-change-list">
+        {snapshot.update.typePacks.map((pack) => (
+          <li key={pack.id}>
+            <span aria-hidden="true">+</span>
+            <div>
+              <strong>{pack.name}</strong>
+              <small>
+                {pack.currentVersion
+                  ? `${pack.currentVersion} → ${pack.desiredVersion}`
+                  : `Install ${pack.desiredVersion}`}
+              </small>
+            </div>
+          </li>
+        ))}
+        {changes.map((item) => (
+          <li key={item.requirement}>
+            <span aria-hidden="true">
+              {item.action === "conflict" ? "!" : "+"}
+            </span>
+            <div>
+              <strong>
+                {item.action === "conflict"
+                  ? "Collection setting needs attention"
+                  : "Allow TaskNotes Base views"}
+              </strong>
+              <small>
+                {item.action === "conflict"
+                  ? item.conflict?.message
+                  : String(item.value)}
+              </small>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {!snapshot.update.canApply ? (
+        <p className="setup-conflict" role="alert">
+          {snapshot.update.reason}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
