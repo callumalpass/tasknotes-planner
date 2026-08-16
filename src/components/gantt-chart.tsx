@@ -1,12 +1,18 @@
 import { Check, GitBranch, Minus } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent,
 } from "react";
 
 import {
@@ -525,25 +531,33 @@ export function GanttChart({
     };
   }
 
-  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const surface = scroller.current;
+      if (!surface || event.deltaY === 0) return;
+      const taskColumn = taskColumnWidth(surface);
+      const bounds = surface.getBoundingClientRect();
+      const viewportX = Math.max(taskColumn, event.clientX - bounds.left);
+      const timelineX = surface.scrollLeft + viewportX - taskColumn;
+      pendingZoomAnchor.current = {
+        minute:
+          planningMinute(scale.start)! +
+          (timelineX / scale.cellWidth) * DAY_MINUTES,
+        viewportX,
+      };
+      onZoom(event.deltaY < 0 ? 1 : -1);
+    },
+    [onZoom, scale.cellWidth, scale.start],
+  );
+
+  useEffect(() => {
     const surface = scroller.current;
-    if (!surface || event.deltaY === 0) return;
-    const bounds = surface.getBoundingClientRect();
-    const viewportX = Math.max(
-      taskColumnWidth(surface),
-      event.clientX - bounds.left,
-    );
-    const timelineX = surface.scrollLeft + viewportX - taskColumnWidth(surface);
-    pendingZoomAnchor.current = {
-      minute:
-        planningMinute(scale.start)! +
-        (timelineX / scale.cellWidth) * DAY_MINUTES,
-      viewportX,
-    };
-    onZoom(event.deltaY < 0 ? 1 : -1);
-  }
+    if (!surface) return;
+    surface.addEventListener("wheel", handleWheel, { passive: false });
+    return () => surface.removeEventListener("wheel", handleWheel);
+  }, [handleWheel, rows.length]);
 
   if (!rows.length)
     return (
@@ -558,7 +572,7 @@ export function GanttChart({
       className={`gantt-frame${linkDrag ? " is-linking" : ""}`}
       aria-label="Task timeline"
     >
-      <div className="gantt-scroll" ref={scroller} onWheel={handleWheel}>
+      <div className="gantt-scroll" ref={scroller}>
         <div
           className="gantt-canvas"
           style={{ width: TASK_COLUMN + timelineWidth }}

@@ -7,7 +7,13 @@ test.beforeEach(async ({ page }) => {
 
 test("zooms and toggles TaskNotes completion", async ({ page }) => {
   await expect(page.locator(".zoom-control output")).toHaveText("Weeks");
-  await page.getByRole("button", { name: "Zoom in" }).click();
+  const timeline = page.locator(".gantt-scroll");
+  const bounds = await timeline.boundingBox();
+  if (!bounds) throw new Error("Timeline bounds are unavailable.");
+  await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + 180);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Control");
   await expect(page.locator(".zoom-control output")).toHaveText("Work weeks");
 
   await page
