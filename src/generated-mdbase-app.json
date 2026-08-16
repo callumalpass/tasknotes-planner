@@ -4,11 +4,7 @@
   "name": "TaskNotes Planner",
   "homepage": "https://planner.tasknotes.dev/",
   "icon": "https://planner.tasknotes.dev/tasknotes-mark.svg",
-  "redirect_uris": [
-    "https://planner.tasknotes.dev/auth/mdbase/callback",
-    "http://127.0.0.1:4174/auth/mdbase/callback",
-    "http://localhost:4174/auth/mdbase/callback"
-  ],
+  "redirect_uris": ["https://planner.tasknotes.dev/auth/mdbase/callback"],
   "requirements": {
     "contracts": [
       {

@@ -46,8 +46,8 @@ off to Planner for timeline work.
 - Drag from the small handle below either end of one bar to an end of another
   bar to create the corresponding start/finish relationship. Cycles and
   self-links are rejected.
-- Select a task to edit dates, add or remove dependencies, or change a
-  relationship type in the inspector.
+- Select a task to edit dates, status, priority, ordered project memberships,
+  dependencies, or relationship types in the inspector.
 
 Date-only values remain all-day at intraday scales. Timestamped tasks snap by
 the visible hour or 15-minute interval, and placing unscheduled work in an
@@ -72,7 +72,30 @@ pnpm typecheck
 pnpm lint
 pnpm build
 pnpm verify
+pnpm test:e2e
 ```
+
+## Deployment
+
+Pull requests and pushes to `main` run the complete verification suite and the
+desktop browser tests. A verified `main` revision deploys automatically to
+`https://planner.tasknotes.dev` through the `tasknotes-planner` Cloudflare Pages
+project, then runs live boundary checks against mdbase Connect.
+
+Publish the current working tree to the isolated staging deployment with:
+
+```sh
+pnpm dlx wrangler@4.114.0 login # first use only
+pnpm deploy:dev
+```
+
+This deploys only the Cloudflare `staging` branch at
+`https://staging.tasknotes-planner.pages.dev`, using staging Connect and the
+staging desktop connector on `127.0.0.1:28486`. It does not change production.
+
+Production and development builds generate separate mdbase manifests. The
+production declaration contains only the `planner.tasknotes.dev` callback;
+local callback URLs are never deployed.
 
 ## mdbase access
 
