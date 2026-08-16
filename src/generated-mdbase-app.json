@@ -17,6 +17,7 @@
       "contract_version": 1,
       "required": [
         "collection.inspect",
+        "collection.setup.apply",
         "records.watch",
         "records.read",
         "records.query",
@@ -34,6 +35,17 @@
         "id": "tasknotes-planner-base-sources",
         "path": "/x-obsidian/bases/include",
         "predicate": "contains",
+        "value": "TaskNotes/Views/**/*.base"
+      }
+    ]
+  },
+  "provisions": {
+    "type_packs": [],
+    "configuration": [
+      {
+        "requirement": "tasknotes-planner-base-sources",
+        "operation": "set_add",
+        "path": "/x-obsidian/bases/include",
         "value": "TaskNotes/Views/**/*.base"
       }
     ]

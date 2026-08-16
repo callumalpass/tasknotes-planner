@@ -17,8 +17,9 @@ concurrency:
 jobs:
   deploy:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      vars.CLOUDFLARE_PAGES_ENABLED == '1' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success')
     environment:
       name: cloudflare-pages
       url: https://planner.tasknotes.dev/

@@ -13,8 +13,20 @@ describe("Planner mdbase manifest", () => {
     ]);
     expect(manifest.requirements).toMatchObject({
       access: "full_collection",
-      capabilities: { required: expect.arrayContaining(["views.execute"]) },
+      capabilities: {
+        required: expect.arrayContaining([
+          "collection.setup.apply",
+          "views.execute",
+        ]),
+      },
     });
+    expect(manifest.provisions).toMatchObject({ type_packs: [] });
+    expect(manifest.provisions.configuration).toEqual([
+      expect.objectContaining({
+        requirement: "tasknotes-planner-base-sources",
+        operation: "set_add",
+      }),
+    ]);
   });
 
   it("adds both supported loopback callbacks only for development", () => {

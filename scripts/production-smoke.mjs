@@ -4,7 +4,7 @@ const appOrigin =
   process.env.TASKNOTES_PRODUCTION_URL ?? "https://planner.tasknotes.dev";
 const validateWithConnect =
   process.env.TASKNOTES_REQUIRE_CONNECT_MANIFEST_VALIDATION !== "0";
-const retryDelays = [3_000, 6_000, 12_000, 20_000];
+const retryDelays = [3_000, 6_000, 12_000, 20_000, 30_000, 45_000, 60_000];
 
 const checks = [
   async () => {
@@ -74,10 +74,14 @@ async function retry(check) {
       return;
     } catch (error) {
       lastError = error;
-      if (attempt < retryDelays.length)
+      if (attempt < retryDelays.length) {
+        console.warn(
+          `${error instanceof Error ? error.message : String(error)} Retrying in ${retryDelays[attempt] / 1_000}s.`,
+        );
         await new Promise((resolve) =>
           setTimeout(resolve, retryDelays[attempt]),
         );
+      }
     }
   }
   throw lastError;

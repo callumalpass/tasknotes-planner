@@ -3,6 +3,7 @@ import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 
 export const requiredCapabilities = Object.freeze([
   "collection.inspect",
+  "collection.setup.apply",
   "records.watch",
   "records.read",
   "records.query",
@@ -44,6 +45,17 @@ export function buildPlannerManifest({ appUrl, development = false }) {
           id: "tasknotes-planner-base-sources",
           path: "/x-obsidian/bases/include",
           predicate: "contains",
+          value: "TaskNotes/Views/**/*.base",
+        },
+      ],
+    },
+    provisions: {
+      type_packs: [],
+      configuration: [
+        {
+          requirement: "tasknotes-planner-base-sources",
+          operation: "set_add",
+          path: "/x-obsidian/bases/include",
           value: "TaskNotes/Views/**/*.base",
         },
       ],

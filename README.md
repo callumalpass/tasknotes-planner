@@ -105,6 +105,7 @@ mutated only through `tasknotes.task`. Planner requests only the capabilities
 it uses:
 
 - inspect the collection contract
+- apply the declared Base-source include setting during authorization
 - query and read TaskNotes records
 - watch for collection changes
 - update TaskNotes records
