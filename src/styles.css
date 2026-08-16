@@ -397,6 +397,15 @@ select:focus-visible {
   background: var(--paper-soft);
 }
 
+.header-actions .save-view-control {
+  width: auto;
+  grid-auto-flow: column;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .planner-toolbar {
   min-height: 58px;
   display: flex;
@@ -442,6 +451,14 @@ select:focus-visible {
   min-width: 150px;
   display: flex;
   align-items: center;
+}
+
+.view-select-control {
+  min-width: 178px;
+}
+
+.compact-select-control {
+  min-width: 132px;
 }
 
 .select-control select {
@@ -726,6 +743,19 @@ button.task-ledger:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ledger-state {
+  display: grid;
+  grid-template-columns: repeat(2, 6px);
+  gap: 3px;
+}
+
+.ledger-state i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgb(32 36 44 / 0.16);
+  border-radius: 50%;
 }
 
 .ledger-title strong {
@@ -1116,9 +1146,110 @@ button.task-ledger:hover,
 }
 
 .task-inspector form,
+.task-state-section,
 .dependency-list {
   padding: 19px 20px;
   border-bottom: 1px solid var(--line);
+}
+
+.task-state-section select {
+  width: 100%;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper);
+}
+
+.planner-dialog-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(32 36 44 / 0.28);
+}
+
+.planner-dialog {
+  width: min(430px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--paper-raised);
+  box-shadow: var(--shadow);
+}
+
+.planner-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 19px 18px 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.planner-dialog > header p {
+  margin: 0 0 5px;
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.planner-dialog h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.planner-dialog > header button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.planner-dialog > label {
+  display: grid;
+  gap: 7px;
+  padding: 20px 20px 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.planner-dialog > label input {
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper);
+  font-size: 16px;
+}
+
+.planner-dialog > p {
+  margin: 12px 20px 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.planner-dialog > p.form-error {
+  color: var(--danger);
+}
+
+.planner-dialog code {
+  font-family: "Azeret Mono", monospace;
+  font-size: 11px;
+}
+
+.planner-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 18px 20px 20px;
 }
 
 .inspector-section-title {

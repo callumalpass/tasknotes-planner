@@ -21,6 +21,19 @@ wide-screen sequencing and schedule review.
 Planner reads and updates these values through the canonical TaskNotes contract;
 it does not depend on TaskNotes' application source or a second local task copy.
 
+Status and priority choices come from each implementing task type's
+`tasknotes.task` binding, including labels, colours, ordering, defaults, and
+completed/skipped semantics. Planner does not assume a fixed set of values.
+
+## Saved Planner views
+
+Planner discovers Obsidian Bases views with `type: tasknotesPlanner`. Selecting
+one executes its standard Base filters and ordering through mdbase. Saving a
+view creates or updates a source under `TaskNotes/Views/`, with the current
+project, status, priority, completed-task preference, and zoom stored in the
+view. TaskNotes can show the same filtered result as a compact list and hand it
+off to Planner for timeline work.
+
 ## Timeline interactions
 
 - Use the minus and plus controls to move between quarter, month, fortnight,
@@ -63,13 +76,17 @@ pnpm verify
 
 ## mdbase access
 
-The application requests contract-scoped access to `tasknotes.task` and only
-the capabilities it uses:
+The application requests full-collection authorization because mdbase saved
+views are collection-level resources. Task records are still selected and
+mutated only through `tasknotes.task`. Planner requests only the capabilities
+it uses:
 
 - inspect the collection contract
 - query and read TaskNotes records
 - watch for collection changes
 - update TaskNotes records
+- list and execute saved views
+- read, create, and update saved-view sources
 
 The production declaration assumes `https://planner.tasknotes.dev/`. Update the
 homepage, icon, and redirect URI together if the deployment origin changes.

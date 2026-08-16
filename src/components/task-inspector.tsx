@@ -1,4 +1,11 @@
-import { CalendarRange, GitBranch, Plus, Trash2, X } from "lucide-react";
+import {
+  CalendarRange,
+  CircleDot,
+  GitBranch,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -18,6 +25,7 @@ import type {
   ScheduleUpdate,
   TaskDependency,
   TaskDependencyRelType,
+  TaskPropertyUpdate,
 } from "../domain/task";
 import type { FormEvent } from "react";
 
@@ -27,6 +35,7 @@ export function TaskInspector({
   onClose,
   onSave,
   onSaveDependencies,
+  onSaveProperties = async () => undefined,
 }: {
   task: PlannerTask;
   allTasks: readonly PlannerTask[];
@@ -35,6 +44,10 @@ export function TaskInspector({
   onSaveDependencies(
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
+  ): Promise<void>;
+  onSaveProperties?(
+    task: PlannerTask,
+    update: TaskPropertyUpdate,
   ): Promise<void>;
 }) {
   const [scheduled, setScheduled] = useState(datePart(task.scheduled) ?? "");
@@ -48,6 +61,10 @@ export function TaskInspector({
     useState<TaskDependencyRelType>("FINISHTOSTART");
   const [scheduleError, setScheduleError] = useState("");
   const [dependencyError, setDependencyError] = useState("");
+  const [status, setStatus] = useState(task.status);
+  const [priority, setPriority] = useState(task.priority);
+  const [propertySaving, setPropertySaving] = useState(false);
+  const [propertyError, setPropertyError] = useState("");
 
   const dependencies = useMemo(
     () =>
@@ -129,6 +146,20 @@ export function TaskInspector({
     setDependencySource("");
   }
 
+  async function saveProperty(update: TaskPropertyUpdate) {
+    setPropertySaving(true);
+    setPropertyError("");
+    try {
+      await onSaveProperties(task, update);
+    } catch (reason) {
+      setStatus(task.status);
+      setPriority(task.priority);
+      setPropertyError(errorMessage(reason));
+    } finally {
+      setPropertySaving(false);
+    }
+  }
+
   return (
     <aside aria-labelledby="inspector-title" className="task-inspector">
       <header>
@@ -148,10 +179,57 @@ export function TaskInspector({
         <div>
           <h2 id="inspector-title">{task.title}</h2>
           <p>
-            {task.status} · {task.priority} priority
+            {task.statusLabel} · {task.priorityLabel} priority
           </p>
         </div>
       </div>
+      <section className="task-state-section">
+        <div className="inspector-section-title">
+          <CircleDot aria-hidden="true" size={16} />
+          <span>Task state</span>
+        </div>
+        <label className="planning-field">
+          <span>Status</span>
+          <select
+            disabled={propertySaving}
+            value={status}
+            onChange={(event) => {
+              const value = event.target.value;
+              setStatus(value);
+              void saveProperty({ status: value });
+            }}
+          >
+            {task.statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="planning-field">
+          <span>Priority</span>
+          <select
+            disabled={propertySaving}
+            value={priority}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPriority(value);
+              void saveProperty({ priority: value });
+            }}
+          >
+            {task.priorityOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {propertyError ? (
+          <p className="form-error" role="alert">
+            {propertyError}
+          </p>
+        ) : null}
+      </section>
       <form onSubmit={(event) => void submit(event)}>
         <div className="inspector-section-title">
           <CalendarRange aria-hidden="true" size={16} />

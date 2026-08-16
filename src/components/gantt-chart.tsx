@@ -809,6 +809,14 @@ function TaskRow({
           <strong>{row.task.title}</strong>
           <small>{scheduleLabel(task)}</small>
         </span>
+        <span
+          aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
+          className="ledger-state"
+          title={`${row.task.statusLabel} · ${row.task.priorityLabel} priority`}
+        >
+          <i style={{ background: row.task.statusColor }} />
+          <i style={{ background: row.task.priorityColor }} />
+        </span>
         {row.task.blockedBy.length ? (
           <GitBranch
             aria-label={`${row.task.blockedBy.length} dependencies`}

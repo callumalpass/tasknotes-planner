@@ -25,6 +25,11 @@ sticky horizontally, both headers remain sticky vertically, and every task row
 therefore has one authoritative height. Do not split vertical scrolling between
 the panes.
 
+Saved `tasknotesPlanner` Bases name the planning context. View choice sits with
+the ordinary timeline filters rather than becoming a dashboard sidebar. Status
+and priority use the labels and restrained paired dots supplied by the TaskNotes
+contract; colour supplements their written values and never replaces them.
+
 Task bars are compact and literal. Milestones are diamonds. Dependency paths,
 the red today rule, and the schedule itself are the only visual marks allowed
 over the timeline grid.

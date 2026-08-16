@@ -24,9 +24,22 @@
         "records.watch",
         "records.read",
         "records.query",
-        "records.update"
+        "records.update",
+        "views.list",
+        "views.execute",
+        "views.source.read",
+        "views.source.create",
+        "views.source.update"
       ]
     },
-    "access": "contract"
+    "access": "full_collection",
+    "configuration": [
+      {
+        "id": "tasknotes-planner-base-sources",
+        "path": "/x-obsidian/bases/include",
+        "predicate": "contains",
+        "value": "TaskNotes/Views/**/*.base"
+      }
+    ]
   }
 }

@@ -15,9 +15,63 @@ const task: PlannerTask = {
   projects: ["[[Product planning]]"],
   blockedBy: [{ uid: "research", reltype: "FINISHTOSTART" }],
   completed: false,
+  statusLabel: "Open",
+  statusColor: "#64748b",
+  priorityLabel: "High",
+  priorityColor: "#ef4444",
+  statusOptions: [
+    {
+      value: "open",
+      label: "Open",
+      color: "#64748b",
+      order: 1,
+      isCompleted: false,
+      isSkipped: false,
+    },
+    {
+      value: "done",
+      label: "Done",
+      color: "#22c55e",
+      order: 2,
+      isCompleted: true,
+      isSkipped: false,
+    },
+  ],
+  priorityOptions: [
+    { value: "high", label: "High", color: "#ef4444", weight: 3 },
+    { value: "normal", label: "Normal", color: "#f59e0b", weight: 2 },
+  ],
 };
 
 describe("TaskInspector", () => {
+  it("writes configured TaskNotes status and priority values", async () => {
+    const onSaveProperties = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[task]}
+        task={task}
+        onClose={() => undefined}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+        onSaveProperties={onSaveProperties}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "done" },
+    });
+    await waitFor(() =>
+      expect(onSaveProperties).toHaveBeenCalledWith(task, { status: "done" }),
+    );
+    fireEvent.change(screen.getByLabelText("Priority"), {
+      target: { value: "normal" },
+    });
+    await waitFor(() =>
+      expect(onSaveProperties).toHaveBeenCalledWith(task, {
+        priority: "normal",
+      }),
+    );
+  });
+
   it("saves canonical date-only schedule values", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onSaveDependencies = vi.fn().mockResolvedValue(undefined);

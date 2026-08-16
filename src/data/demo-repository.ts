@@ -4,9 +4,54 @@ import type {
   PlannerCollection,
   PlannerRepository,
   PlannerTask,
+  PlannerView,
+  SavePlannerViewInput,
   ScheduleUpdate,
   TaskDependency,
+  TaskPropertyUpdate,
 } from "../domain/task";
+
+const demoStatuses = [
+  {
+    value: "open",
+    label: "Open",
+    color: "#64748b",
+    order: 1,
+    isCompleted: false,
+    isSkipped: false,
+  },
+  {
+    value: "in-progress",
+    label: "In progress",
+    color: "#3b82f6",
+    order: 2,
+    isCompleted: false,
+    isSkipped: false,
+  },
+  {
+    value: "done",
+    label: "Done",
+    color: "#22c55e",
+    order: 3,
+    isCompleted: true,
+    isSkipped: false,
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+    color: "#94a3b8",
+    order: 4,
+    isCompleted: false,
+    isSkipped: true,
+  },
+];
+
+const demoPriorities = [
+  { value: "high", label: "High", color: "#ef4444", weight: 3 },
+  { value: "normal", label: "Normal", color: "#f59e0b", weight: 2 },
+  { value: "low", label: "Low", color: "#3b82f6", weight: 1 },
+  { value: "none", label: "None", color: "#94a3b8", weight: 0 },
+];
 
 export class DemoPlannerRepository implements PlannerRepository {
   private readonly collection: PlannerCollection;
@@ -16,10 +61,18 @@ export class DemoPlannerRepository implements PlannerRepository {
       id: "demo-planning",
       name: "Product planning",
       tasks: demoTasks(today),
+      views: [],
+      statuses: demoStatuses,
+      priorities: demoPriorities,
     };
   }
 
-  async load(): Promise<PlannerCollection> {
+  async load(viewKey?: string): Promise<PlannerCollection> {
+    const activeView = this.collection.views.find(
+      (view) => view.key === viewKey,
+    );
+    if (activeView) this.collection.activeView = activeView;
+    else delete this.collection.activeView;
     return structuredClone(this.collection);
   }
 
@@ -46,15 +99,51 @@ export class DemoPlannerRepository implements PlannerRepository {
     if (index >= 0) this.collection.tasks[index] = saved;
     return structuredClone(saved);
   }
+
+  async updateProperties(
+    task: PlannerTask,
+    update: TaskPropertyUpdate,
+  ): Promise<PlannerTask> {
+    const saved = decorateTask({ ...task, ...update });
+    const index = this.collection.tasks.findIndex(
+      (candidate) => candidate.id === task.id,
+    );
+    if (index >= 0) this.collection.tasks[index] = saved;
+    return structuredClone(saved);
+  }
+
+  async saveView(input: SavePlannerViewInput): Promise<PlannerView> {
+    const existing = input.view;
+    const id = slug(input.name);
+    const view: PlannerView = {
+      key: existing?.key ?? `TaskNotes/Views/${id}.base#${id}`,
+      path: existing?.path ?? `TaskNotes/Views/${id}.base`,
+      id: existing?.id ?? id,
+      name: input.name,
+      format: "obsidian.base",
+      revision: String(Number(existing?.revision ?? "0") + 1),
+      writable: true,
+      options: {
+        zoom: input.zoom,
+        project: input.project,
+        status: input.status,
+        priority: input.priority,
+        showCompleted: input.showCompleted,
+      },
+    };
+    this.collection.views = existing
+      ? this.collection.views.map((candidate) =>
+          candidate.key === existing.key ? view : candidate,
+        )
+      : [...this.collection.views, view];
+    this.collection.activeView = view;
+    return structuredClone(view);
+  }
 }
 
 function demoTasks(today: string): PlannerTask[] {
   const values: Array<
-    Omit<
-      PlannerTask,
-      "path" | "status" | "priority" | "projects" | "blockedBy" | "completed"
-    > &
-      Partial<PlannerTask>
+    Pick<PlannerTask, "id" | "title"> & Partial<PlannerTask>
   > = [
     {
       id: "brief",
@@ -134,15 +223,54 @@ function demoTasks(today: string): PlannerTask[] {
       projects: ["[[Operations]]"],
     },
   ];
-  return values.map((value) => ({
-    path: `tasks/${value.id}.md`,
-    status: value.completed ? "done" : "open",
-    priority: "normal",
-    projects: [],
-    blockedBy: [],
-    completed: false,
-    ...value,
-  }));
+  return values.map((value) =>
+    decorateTask({
+      path: `tasks/${value.id}.md`,
+      status: value.completed ? "done" : "open",
+      priority: "normal",
+      projects: [],
+      blockedBy: [],
+      completed: false,
+      ...value,
+    }),
+  );
+}
+
+type DecoratableTask = Pick<
+  PlannerTask,
+  | "id"
+  | "path"
+  | "title"
+  | "status"
+  | "priority"
+  | "projects"
+  | "blockedBy"
+  | "completed"
+> &
+  Partial<PlannerTask>;
+
+function decorateTask(task: DecoratableTask): PlannerTask {
+  const status = demoStatuses.find(({ value }) => value === task.status)!;
+  const priority = demoPriorities.find(({ value }) => value === task.priority)!;
+  return {
+    ...task,
+    completed: status.isCompleted,
+    statusLabel: status.label,
+    statusColor: status.color,
+    priorityLabel: priority.label,
+    priorityColor: priority.color,
+    statusOptions: demoStatuses,
+    priorityOptions: demoPriorities,
+  };
+}
+
+function slug(value: string): string {
+  return (
+    value
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "planner"
+  );
 }
 
 function atTime(date: string, time: string): string {

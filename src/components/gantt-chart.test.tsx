@@ -13,6 +13,12 @@ const makeTask = (input: Partial<PlannerTask>): PlannerTask => ({
   projects: input.projects ?? [],
   blockedBy: input.blockedBy ?? [],
   completed: input.completed ?? false,
+  statusLabel: input.statusLabel ?? input.status ?? "Open",
+  statusColor: input.statusColor ?? "#64748b",
+  priorityLabel: input.priorityLabel ?? input.priority ?? "Normal",
+  priorityColor: input.priorityColor ?? "#f59e0b",
+  statusOptions: input.statusOptions ?? [],
+  priorityOptions: input.priorityOptions ?? [],
   ...input,
 });
 

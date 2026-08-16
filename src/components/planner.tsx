@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  BookmarkPlus,
   Check,
   ChevronDown,
   CircleAlert,
@@ -10,8 +11,16 @@ import {
   Sun,
   ZoomIn,
   ZoomOut,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import {
   clampZoom,
@@ -32,6 +41,7 @@ import type {
   PlannerTask,
   ScheduleUpdate,
   TaskDependency,
+  TaskPropertyUpdate,
 } from "../domain/task";
 
 export function Planner({
@@ -47,8 +57,17 @@ export function Planner({
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [project, setProject] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [showCompleted, setShowCompleted] = useState(false);
   const [zoom, setZoom] = useState<TimelineZoom>(3);
+  const [activeViewKey, setActiveViewKey] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get("view"),
+  );
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [savingView, setSavingView] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [todayRequest, setTodayRequest] = useState(0);
   const refreshTimer = useRef<number | null>(null);
@@ -59,7 +78,15 @@ export function Planner({
       else setLoading(true);
       setError("");
       try {
-        setCollection(await repository.load());
+        const next = await repository.load(activeViewKey ?? undefined);
+        setCollection(next);
+        const options = next.activeView?.options;
+        setProject(options?.project ?? "all");
+        setStatus(options?.status ?? "all");
+        setPriority(options?.priority ?? "all");
+        setShowCompleted(options?.showCompleted ?? false);
+        if (options?.zoom !== undefined)
+          setZoom(clampZoom(Math.round(options.zoom)));
       } catch (reason) {
         setError(errorMessage(reason));
       } finally {
@@ -67,7 +94,7 @@ export function Planner({
         setRefreshing(false);
       }
     },
-    [repository],
+    [activeViewKey, repository],
   );
 
   useEffect(() => {
@@ -102,24 +129,18 @@ export function Planner({
 
   const projects = useMemo(
     () =>
-      [
-        ...new Set(
-          collection?.tasks.flatMap((task) =>
-            task.projects.map(projectLabel),
-          ) ?? [],
-        ),
-      ].sort((left, right) => left.localeCompare(right)),
+      [...new Set(collection?.tasks.flatMap((task) => task.projects) ?? [])]
+        .map((value) => ({ value, label: projectLabel(value) }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
     [collection],
   );
   const visibleTasks = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return (collection?.tasks ?? []).filter((task) => {
       if (!showCompleted && task.completed) return false;
-      if (
-        project !== "all" &&
-        !task.projects.some((value) => projectLabel(value) === project)
-      )
-        return false;
+      if (project !== "all" && !task.projects.includes(project)) return false;
+      if (status !== "all" && task.status !== status) return false;
+      if (priority !== "all" && task.priority !== priority) return false;
       if (
         normalizedQuery &&
         ![task.title, task.status, task.priority, ...task.projects]
@@ -130,7 +151,7 @@ export function Planner({
         return false;
       return true;
     });
-  }, [collection, project, query, showCompleted]);
+  }, [collection, priority, project, query, showCompleted, status]);
   const selected =
     collection?.tasks.find((task) => task.id === selectedId) ?? null;
   const unscheduled = visibleTasks.filter((task) => !taskSpan(task)).length;
@@ -163,6 +184,54 @@ export function Planner({
     } catch (reason) {
       setCollection((current) => replaceCollectionTask(current, previous));
       throw reason;
+    }
+  }
+
+  async function saveProperties(task: PlannerTask, update: TaskPropertyUpdate) {
+    const saved = await repository.updateProperties(task, update);
+    setCollection((current) => replaceCollectionTask(current, saved));
+  }
+
+  function chooseView(key: string) {
+    const next = key || null;
+    setActiveViewKey(next);
+    setSelectedId(null);
+    const url = new URL(location.href);
+    if (next) url.searchParams.set("view", next);
+    else url.searchParams.delete("view");
+    history.replaceState(history.state, "", url);
+  }
+
+  function openSaveView() {
+    setSaveName(collection?.activeView?.name ?? "");
+    setSaveError("");
+    setSaveOpen(true);
+  }
+
+  async function saveView(event: FormEvent) {
+    event.preventDefault();
+    if (!collection || !saveName.trim()) return;
+    setSavingView(true);
+    setSaveError("");
+    try {
+      const saved = await repository.saveView({
+        name: saveName,
+        ...(collection.activeView?.writable
+          ? { view: collection.activeView }
+          : {}),
+        zoom,
+        project,
+        status,
+        priority,
+        showCompleted,
+      });
+      setSaveOpen(false);
+      if (saved.key === activeViewKey) await load(true);
+      else chooseView(saved.key);
+    } catch (reason) {
+      setSaveError(errorMessage(reason));
+    } finally {
+      setSavingView(false);
     }
   }
 
@@ -200,9 +269,19 @@ export function Planner({
         </div>
         <div className="planner-heading">
           <p>Plan</p>
-          <h1>Timeline</h1>
+          <h1>{collection.activeView?.name ?? "Timeline"}</h1>
         </div>
         <div className="header-actions">
+          <button
+            className="save-view-control"
+            type="button"
+            onClick={openSaveView}
+          >
+            <BookmarkPlus aria-hidden="true" size={17} />
+            <span>
+              {collection.activeView?.writable ? "Save changes" : "Save view"}
+            </span>
+          </button>
           <ThemeButton />
           <button
             aria-label="Refresh tasks"
@@ -220,6 +299,21 @@ export function Planner({
       </header>
 
       <section className="planner-toolbar" aria-label="Timeline controls">
+        <label className="select-control view-select-control">
+          <span className="sr-only">Planner view</span>
+          <select
+            value={collection.activeView?.key ?? ""}
+            onChange={(event) => chooseView(event.target.value)}
+          >
+            <option value="">All tasks</option>
+            {collection.views.map((view) => (
+              <option key={view.key} value={view.key}>
+                {view.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden="true" size={14} />
+        </label>
         <label className="search-control">
           <Search aria-hidden="true" size={17} />
           <span className="sr-only">Search tasks</span>
@@ -237,9 +331,39 @@ export function Planner({
             onChange={(event) => setProject(event.target.value)}
           >
             <option value="all">All projects</option>
-            {projects.map((value) => (
-              <option key={value} value={value}>
-                {value}
+            {projects.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden="true" size={14} />
+        </label>
+        <label className="select-control compact-select-control">
+          <span className="sr-only">Status</span>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="all">All statuses</option>
+            {collection.statuses.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden="true" size={14} />
+        </label>
+        <label className="select-control compact-select-control">
+          <span className="sr-only">Priority</span>
+          <select
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+          >
+            <option value="all">All priorities</option>
+            {collection.priorities.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -312,8 +436,71 @@ export function Planner({
           task={selected}
           onClose={() => setSelectedId(null)}
           onSaveDependencies={saveDependencies}
+          onSaveProperties={saveProperties}
           onSave={saveSchedule}
         />
+      ) : null}
+      {saveOpen ? (
+        <div className="planner-dialog-backdrop" role="presentation">
+          <form
+            aria-labelledby="save-view-title"
+            className="planner-dialog"
+            role="dialog"
+            onSubmit={(event) => void saveView(event)}
+          >
+            <header>
+              <div>
+                <p>TaskNotes Base</p>
+                <h2 id="save-view-title">
+                  {collection.activeView?.writable
+                    ? "Save Planner view"
+                    : "Create Planner view"}
+                </h2>
+              </div>
+              <button
+                aria-label="Close"
+                type="button"
+                onClick={() => setSaveOpen(false)}
+              >
+                <X aria-hidden="true" size={19} />
+              </button>
+            </header>
+            <label>
+              <span>View name</span>
+              <input
+                autoFocus
+                required
+                value={saveName}
+                onChange={(event) => setSaveName(event.target.value)}
+              />
+            </label>
+            <p>
+              Saves the current filters and zoom as a reusable
+              <code> tasknotesPlanner </code>view in TaskNotes/Views.
+            </p>
+            {saveError ? (
+              <p className="form-error" role="alert">
+                {saveError}
+              </p>
+            ) : null}
+            <footer>
+              <button
+                className="text-action"
+                type="button"
+                onClick={() => setSaveOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="save-action"
+                disabled={savingView || !saveName.trim()}
+                type="submit"
+              >
+                {savingView ? "Saving…" : "Save view"}
+              </button>
+            </footer>
+          </form>
+        </div>
       ) : null}
     </main>
   );
