@@ -21,6 +21,23 @@ wide-screen sequencing and schedule review.
 Planner reads and updates these values through the canonical TaskNotes contract;
 it does not depend on TaskNotes' application source or a second local task copy.
 
+## Timeline interactions
+
+- Use the minus and plus controls to move between quarter, month, fortnight,
+  week, work-week, and day scales. `Ctrl`/`Cmd` + wheel zooms around the pointer.
+- Drag a task bar to move its whole schedule. Drag either end to change its
+  scheduled or due date. Drag an unscheduled row into the timeline to place it.
+- Focus a bar and use `Alt` + Left/Right Arrow for one-day keyboard moves. The
+  resize grips support Left/Right Arrow directly.
+- Drag from the small handle below either end of one bar to an end of another
+  bar to create the corresponding start/finish relationship. Cycles and
+  self-links are rejected.
+- Select a task to edit dates, add or remove dependencies, or change a
+  relationship type in the inspector.
+
+Date drags preserve any existing TaskNotes time-of-day and timezone suffix;
+only the calendar date changes.
+
 ## Development
 
 ```sh

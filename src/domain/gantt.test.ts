@@ -1,4 +1,14 @@
-import { addDays, groupTasks, taskSpan, timelineScale } from "./gantt";
+import {
+  addDays,
+  canAddDependency,
+  dependencyRelationship,
+  groupTasks,
+  replaceDatePart,
+  resizedSchedule,
+  shiftedSchedule,
+  taskSpan,
+  timelineScale,
+} from "./gantt";
 
 import type { PlannerTask } from "./task";
 
@@ -48,13 +58,79 @@ describe("timelineScale", () => {
   it("includes task dates and a useful horizon around today", () => {
     const scale = timelineScale(
       [task({ scheduled: "2026-07-01", due: "2027-01-15" })],
-      "week",
+      3,
       "2026-08-16",
     );
     expect(scale.start <= "2026-07-01").toBe(true);
     expect(scale.end >= "2027-01-15").toBe(true);
     expect(scale.cellWidth).toBe(15);
     expect(scale.days.at(-1)).toBe(scale.end);
+  });
+});
+
+describe("schedule manipulation", () => {
+  it("preserves TaskNotes time suffixes when replacing a date", () => {
+    expect(replaceDatePart("2026-08-17T09:30:00+10:00", "2026-08-19")).toBe(
+      "2026-08-19T09:30:00+10:00",
+    );
+  });
+
+  it("moves both ends of a task by calendar days", () => {
+    expect(
+      shiftedSchedule(
+        task({
+          scheduled: "2026-08-17T09:30:00+10:00",
+          due: "2026-08-20",
+        }),
+        2,
+      ),
+    ).toEqual({
+      scheduled: "2026-08-19T09:30:00+10:00",
+      due: "2026-08-22",
+    });
+  });
+
+  it("does not let a resized edge cross the other edge", () => {
+    expect(
+      resizedSchedule(
+        task({ scheduled: "2026-08-17", due: "2026-08-20" }),
+        "start",
+        "2026-08-24",
+      ),
+    ).toEqual({ scheduled: "2026-08-20", due: "2026-08-20" });
+  });
+});
+
+describe("dependency editing", () => {
+  const research = task({
+    id: "research",
+    path: "tasks/Research.md",
+    title: "Research",
+  });
+  const prototype = task({
+    id: "prototype",
+    path: "tasks/Prototype.md",
+    title: "Prototype",
+    blockedBy: [{ uid: "[[tasks/Research.md]]", reltype: "FINISHTOSTART" }],
+  });
+
+  it("rejects self-links and cycles, including path-based links", () => {
+    expect(
+      canAddDependency([research, prototype], "research", "research"),
+    ).toMatchObject({ allowed: false });
+    expect(
+      canAddDependency([research, prototype], "prototype", "research"),
+    ).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining("cycle"),
+    });
+  });
+
+  it("maps dragged bar edges to TaskNotes relationship types", () => {
+    expect(dependencyRelationship("finish", "start")).toBe("FINISHTOSTART");
+    expect(dependencyRelationship("start", "start")).toBe("STARTTOSTART");
+    expect(dependencyRelationship("finish", "finish")).toBe("FINISHTOFINISH");
+    expect(dependencyRelationship("start", "finish")).toBe("STARTTOFINISH");
   });
 });
 

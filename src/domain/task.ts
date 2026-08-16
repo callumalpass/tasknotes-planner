@@ -1,4 +1,9 @@
-import type { TaskDependency } from "@tasknotes/model/types";
+import type {
+  TaskDependency,
+  TaskDependencyRelType,
+} from "@tasknotes/model/types";
+
+export type { TaskDependency, TaskDependencyRelType };
 
 export interface PlannerTask {
   id: string;
@@ -31,6 +36,10 @@ export interface PlannerRepository {
   updateSchedule(
     task: PlannerTask,
     update: ScheduleUpdate,
+  ): Promise<PlannerTask>;
+  updateDependencies(
+    task: PlannerTask,
+    dependencies: readonly TaskDependency[],
   ): Promise<PlannerTask>;
   watch?(listener: () => void): Promise<() => void>;
 }

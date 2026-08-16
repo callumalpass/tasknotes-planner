@@ -8,10 +8,19 @@ import {
   RefreshCw,
   Search,
   Sun,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { projectLabel, taskSpan, type TimelineZoom } from "../domain/gantt";
+import {
+  clampZoom,
+  projectLabel,
+  taskSpan,
+  withSchedule,
+  zoomDefinition,
+  type TimelineZoom,
+} from "../domain/gantt";
 import { GanttChart } from "./gantt-chart";
 import { TaskInspector } from "./task-inspector";
 import { errorMessage } from "../data/outcome";
@@ -21,6 +30,7 @@ import type {
   PlannerRepository,
   PlannerTask,
   ScheduleUpdate,
+  TaskDependency,
 } from "../domain/task";
 
 export function Planner({
@@ -37,7 +47,7 @@ export function Planner({
   const [query, setQuery] = useState("");
   const [project, setProject] = useState("all");
   const [showCompleted, setShowCompleted] = useState(false);
-  const [zoom, setZoom] = useState<TimelineZoom>("week");
+  const [zoom, setZoom] = useState<TimelineZoom>(3);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [todayRequest, setTodayRequest] = useState(0);
   const refreshTimer = useRef<number | null>(null);
@@ -125,17 +135,34 @@ export function Planner({
   const unscheduled = visibleTasks.filter((task) => !taskSpan(task)).length;
 
   async function saveSchedule(task: PlannerTask, update: ScheduleUpdate) {
-    const saved = await repository.updateSchedule(task, update);
+    const previous = task;
     setCollection((current) =>
-      current
-        ? {
-            ...current,
-            tasks: current.tasks.map((candidate) =>
-              candidate.id === saved.id ? saved : candidate,
-            ),
-          }
-        : current,
+      replaceCollectionTask(current, withSchedule(task, update)),
     );
+    try {
+      const saved = await repository.updateSchedule(task, update);
+      setCollection((current) => replaceCollectionTask(current, saved));
+    } catch (reason) {
+      setCollection((current) => replaceCollectionTask(current, previous));
+      throw reason;
+    }
+  }
+
+  async function saveDependencies(
+    task: PlannerTask,
+    dependencies: readonly TaskDependency[],
+  ) {
+    const previous = task;
+    setCollection((current) =>
+      replaceCollectionTask(current, { ...task, blockedBy: [...dependencies] }),
+    );
+    try {
+      const saved = await repository.updateDependencies(task, dependencies);
+      setCollection((current) => replaceCollectionTask(current, saved));
+    } catch (reason) {
+      setCollection((current) => replaceCollectionTask(current, previous));
+      throw reason;
+    }
   }
 
   if (loading && !collection) return <PlannerLoading />;
@@ -240,17 +267,24 @@ export function Planner({
           <CalendarDays aria-hidden="true" size={16} />
           Today
         </button>
-        <div className="zoom-control" aria-label="Timeline scale">
-          {(["day", "week", "month"] as const).map((value) => (
-            <button
-              aria-pressed={zoom === value}
-              key={value}
-              type="button"
-              onClick={() => setZoom(value)}
-            >
-              {value === "day" ? "Days" : value === "week" ? "Weeks" : "Months"}
-            </button>
-          ))}
+        <div className="zoom-control" aria-label="Timeline zoom">
+          <button
+            aria-label="Zoom out"
+            disabled={zoom <= 0}
+            type="button"
+            onClick={() => setZoom((value) => clampZoom(value - 1))}
+          >
+            <ZoomOut aria-hidden="true" size={15} />
+          </button>
+          <output aria-live="polite">{zoomDefinition(zoom).label}</output>
+          <button
+            aria-label="Zoom in"
+            disabled={zoom >= 5}
+            type="button"
+            onClick={() => setZoom((value) => clampZoom(value + 1))}
+          >
+            <ZoomIn aria-hidden="true" size={15} />
+          </button>
         </div>
       </section>
 
@@ -260,11 +294,15 @@ export function Planner({
         </p>
       ) : null}
       <GanttChart
+        allTasks={collection.tasks}
         selectedId={selectedId}
         tasks={visibleTasks}
         todayRequest={todayRequest}
         zoom={zoom}
+        onDependenciesChange={saveDependencies}
+        onScheduleChange={saveSchedule}
         onSelect={(task) => setSelectedId(task.id)}
+        onZoom={(direction) => setZoom((value) => clampZoom(value + direction))}
       />
       {selected ? (
         <TaskInspector
@@ -272,11 +310,26 @@ export function Planner({
           key={selected.id}
           task={selected}
           onClose={() => setSelectedId(null)}
+          onSaveDependencies={saveDependencies}
           onSave={saveSchedule}
         />
       ) : null}
     </main>
   );
+}
+
+function replaceCollectionTask(
+  collection: PlannerCollection | null,
+  task: PlannerTask,
+): PlannerCollection | null {
+  return collection
+    ? {
+        ...collection,
+        tasks: collection.tasks.map((candidate) =>
+          candidate.id === task.id ? task : candidate,
+        ),
+      }
+    : collection;
 }
 
 function ThemeButton() {

@@ -6,7 +6,10 @@ import {
   type RecordDocument,
 } from "@mdbase-dev/connect";
 import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
-import { normalizeDependencyList } from "@tasknotes/model/mapping";
+import {
+  normalizeDependencyList,
+  serializeDependencies,
+} from "@tasknotes/model/mapping";
 import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model/types";
 
 import { requireOutcome } from "./outcome";
@@ -16,6 +19,7 @@ import type {
   PlannerRepository,
   PlannerTask,
   ScheduleUpdate,
+  TaskDependency,
 } from "../domain/task";
 
 const contract = {
@@ -64,6 +68,25 @@ export class MdbasePlannerRepository implements PlannerRepository {
     task: PlannerTask,
     update: ScheduleUpdate,
   ): Promise<PlannerTask> {
+    return this.updateTask(task, {
+      scheduled: update.scheduled ?? null,
+      due: update.due ?? null,
+    });
+  }
+
+  async updateDependencies(
+    task: PlannerTask,
+    dependencies: readonly TaskDependency[],
+  ): Promise<PlannerTask> {
+    return this.updateTask(task, {
+      blockedBy: serializeDependencies(dependencies),
+    });
+  }
+
+  private async updateTask(
+    task: PlannerTask,
+    patch: JsonObject,
+  ): Promise<PlannerTask> {
     const selector = {
       ...contract,
       ...(task.providerType ? { type: task.providerType } : {}),
@@ -76,10 +99,7 @@ export class MdbasePlannerRepository implements PlannerRepository {
         path: task.path,
         contract: selector,
         ifRevision: current.revision,
-        patch: {
-          scheduled: update.scheduled ?? null,
-          due: update.due ?? null,
-        },
+        patch,
       }),
     );
     const saved = this.taskFromRecord(result);

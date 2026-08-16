@@ -5,6 +5,7 @@ import type {
   PlannerRepository,
   PlannerTask,
   ScheduleUpdate,
+  TaskDependency,
 } from "../domain/task";
 
 export class DemoPlannerRepository implements PlannerRepository {
@@ -27,6 +28,18 @@ export class DemoPlannerRepository implements PlannerRepository {
     update: ScheduleUpdate,
   ): Promise<PlannerTask> {
     const saved = { ...task, ...update };
+    const index = this.collection.tasks.findIndex(
+      (candidate) => candidate.id === task.id,
+    );
+    if (index >= 0) this.collection.tasks[index] = saved;
+    return structuredClone(saved);
+  }
+
+  async updateDependencies(
+    task: PlannerTask,
+    dependencies: readonly TaskDependency[],
+  ): Promise<PlannerTask> {
+    const saved = { ...task, blockedBy: [...dependencies] };
     const index = this.collection.tasks.findIndex(
       (candidate) => candidate.id === task.id,
     );

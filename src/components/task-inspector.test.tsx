@@ -20,12 +20,14 @@ const task: PlannerTask = {
 describe("TaskInspector", () => {
   it("saves canonical date-only schedule values", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
+    const onSaveDependencies = vi.fn().mockResolvedValue(undefined);
     render(
       <TaskInspector
         allTasks={[task]}
         task={task}
         onClose={() => undefined}
         onSave={onSave}
+        onSaveDependencies={onSaveDependencies}
       />,
     );
     fireEvent.change(screen.getByLabelText("Scheduled"), {
@@ -42,12 +44,14 @@ describe("TaskInspector", () => {
 
   it("does not save a reverse date range", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
+    const onSaveDependencies = vi.fn().mockResolvedValue(undefined);
     render(
       <TaskInspector
         allTasks={[task]}
         task={task}
         onClose={() => undefined}
         onSave={onSave}
+        onSaveDependencies={onSaveDependencies}
       />,
     );
     fireEvent.change(screen.getByLabelText("Scheduled"), {
@@ -59,5 +63,35 @@ describe("TaskInspector", () => {
     expect(
       screen.getByRole("button", { name: "Save schedule" }),
     ).toBeDisabled();
+  });
+
+  it("adds a selected blocking relationship", async () => {
+    const research: PlannerTask = {
+      ...task,
+      id: "research",
+      path: "tasks/research.md",
+      title: "Research options",
+      blockedBy: [],
+    };
+    const target = { ...task, blockedBy: [] };
+    const onSaveDependencies = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[research, target]}
+        task={target}
+        onClose={() => undefined}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onSaveDependencies={onSaveDependencies}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Blocking task"), {
+      target: { value: "research" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add relationship" }));
+    await waitFor(() =>
+      expect(onSaveDependencies).toHaveBeenCalledWith(target, [
+        { uid: "research", reltype: "FINISHTOSTART" },
+      ]),
+    );
   });
 });

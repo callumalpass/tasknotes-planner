@@ -497,18 +497,21 @@ select:focus-visible {
 }
 
 .zoom-control button {
-  min-width: 61px;
-  padding: 0 9px;
+  width: 31px;
+  padding: 0;
   border: 0;
   border-radius: 3px;
   background: transparent;
   color: var(--ink-soft);
-  font-size: 14px;
 }
 
-.zoom-control button[aria-pressed="true"] {
-  background: var(--accent-soft);
+.zoom-control output {
+  min-width: 82px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
   color: var(--accent);
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -521,6 +524,7 @@ select:focus-visible {
 
 /* Gantt */
 .gantt-frame {
+  position: relative;
   min-height: 0;
   flex: 1;
   background: var(--paper);
@@ -590,6 +594,22 @@ select:focus-visible {
   height: 100%;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.date-row b {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  height: 100%;
+  padding: 9px 5px 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .month-row span {
@@ -728,16 +748,32 @@ button.task-ledger:hover,
   top: 14px;
   height: 21px;
   min-width: 8px;
-  padding: 0 7px;
-  overflow: hidden;
-  border: 0;
   border-radius: 4px;
   background: var(--accent);
   color: white;
-  text-align: left;
+  touch-action: none;
 }
 
-.task-bar span {
+.task-bar-main {
+  width: 100%;
+  height: 100%;
+  display: block;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.task-bar-main:active {
+  cursor: grabbing;
+}
+
+.task-bar-main span {
   display: block;
   overflow: hidden;
   font-size: 11px;
@@ -747,7 +783,7 @@ button.task-ledger:hover,
   white-space: nowrap;
 }
 
-.task-bar:hover {
+.task-bar:hover .task-bar-main {
   filter: brightness(1.08);
 }
 
@@ -761,16 +797,98 @@ button.task-ledger:hover,
   width: 15px;
   height: 15px;
   min-width: 15px;
-  padding: 0;
   border-radius: 2px;
   transform: translateX(-50%) rotate(45deg);
 }
 
-.unscheduled-row-action {
+.task-bar.is-milestone .task-bar-main {
+  padding: 0;
+}
+
+.task-bar.is-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 0.78;
+}
+
+.task-bar.is-placement-preview {
+  pointer-events: none;
+}
+
+.resize-grip,
+.link-port {
   position: absolute;
+  z-index: 5;
+  padding: 0;
+  border: 0;
+  touch-action: none;
+}
+
+.resize-grip {
+  top: 2px;
+  bottom: 2px;
+  width: 6px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.8);
+  cursor: ew-resize;
+  opacity: 0;
+}
+
+.resize-grip.is-start {
+  left: 2px;
+}
+
+.resize-grip.is-finish {
+  right: 2px;
+}
+
+.task-bar:hover .resize-grip,
+.resize-grip:focus-visible {
+  opacity: 1;
+}
+
+.link-port {
+  bottom: -14px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--paper);
+  cursor: crosshair;
+  opacity: 0;
+}
+
+.link-port.is-start {
+  left: -4px;
+}
+
+.link-port.is-finish {
+  right: -4px;
+}
+
+.task-bar:hover .link-port,
+.task-bar:focus-within .link-port,
+.gantt-frame.is-linking .link-port {
+  opacity: 1;
+}
+
+.link-port.is-targeted {
+  border-color: var(--success);
+  background: var(--success);
+  transform: scale(1.35);
+}
+
+.link-port.is-targeted.is-invalid {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.unscheduled-row-action {
+  position: sticky;
   z-index: 3;
   top: 9px;
-  left: 12px;
+  left: calc(var(--task-column) + 12px);
+  width: max-content;
   height: 30px;
   display: inline-flex;
   align-items: center;
@@ -781,6 +899,15 @@ button.task-ledger:hover,
   background: var(--paper);
   color: var(--ink-muted);
   font-size: 12px;
+  touch-action: none;
+}
+
+.unscheduled-row-action:active {
+  cursor: grabbing;
+}
+
+.unscheduled-row-action.is-preview {
+  color: var(--accent);
 }
 
 .today-line {
@@ -828,6 +955,40 @@ button.task-ledger:hover,
 .dependency-layer marker path {
   fill: var(--ink-muted);
   stroke: none;
+}
+
+.dependency-layer .link-preview {
+  stroke: var(--accent);
+  stroke-width: 1.7;
+  opacity: 1;
+}
+
+.dependency-layer .link-preview.is-invalid {
+  stroke: var(--danger);
+}
+
+.gantt-interaction-message {
+  position: absolute;
+  z-index: 12;
+  right: 18px;
+  bottom: 16px;
+  max-width: min(420px, calc(100% - 36px));
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper-raised);
+  box-shadow: 0 5px 18px rgb(32 36 44 / 0.12);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.gantt-interaction-message.is-success {
+  color: var(--success);
+}
+
+.gantt-interaction-message.is-danger {
+  color: var(--danger);
 }
 
 .gantt-empty {
@@ -980,19 +1141,58 @@ button.task-ledger:hover,
 }
 
 .dependency-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 32px;
+  align-items: center;
+  gap: 7px;
   padding: 10px 0;
   border-top: 1px solid var(--line);
 }
 
-.dependency-list li small {
-  flex: 0 0 auto;
+.dependency-list li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependency-list select,
+.dependency-adder select {
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.dependency-list li > button,
+.dependency-adder > button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--ink-muted);
-  font-family: "Azeret Mono", monospace;
-  font-size: 9px;
-  text-transform: uppercase;
+}
+
+.dependency-list li > button:hover,
+.dependency-adder > button:hover {
+  background: var(--paper-soft);
+  color: var(--accent);
+}
+
+.dependency-adder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 32px;
+  gap: 7px;
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
 }
 
 .record-path {
