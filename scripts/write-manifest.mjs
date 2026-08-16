@@ -8,7 +8,7 @@ const development = process.argv.includes("--development");
 const appUrl =
   process.env.TASKNOTES_PLANNER_URL ??
   (development ? "http://127.0.0.1:4174" : "https://planner.tasknotes.dev");
-const manifest = buildPlannerManifest({ appUrl, development });
+const manifest = await buildPlannerManifest({ appUrl, development });
 const serialized = await format(JSON.stringify(manifest), { parser: "json" });
 const targets = [
   resolve(

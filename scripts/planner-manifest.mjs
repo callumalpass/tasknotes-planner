@@ -1,9 +1,13 @@
-import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
-import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
+import {
+  buildTaskNotesMdbaseResources,
+  buildTaskNotesMdbaseTypePack,
+} from "@tasknotes/model/mdbase";
 
 export const requiredCapabilities = Object.freeze([
   "collection.inspect",
   "collection.setup.apply",
+  "definitions.update",
+  "definitions.type-pack.apply",
   "records.watch",
   "records.read",
   "records.query",
@@ -15,11 +19,19 @@ export const requiredCapabilities = Object.freeze([
   "views.source.update",
 ]);
 
-export function buildPlannerManifest({ appUrl, development = false }) {
+export async function buildPlannerManifest({ appUrl, development = false }) {
   const origin = appUrl.replace(/\/$/, "");
   const redirectUris = [`${origin}/auth/mdbase/callback`];
   if (development && origin === "http://127.0.0.1:4174")
     redirectUris.push("http://localhost:4174/auth/mdbase/callback");
+  const typePack = await buildTaskNotesMdbaseTypePack(
+    buildTaskNotesMdbaseResources({ profiles: ["core-lite"] }),
+  );
+  const taskContract = typePack.provides.find(
+    (contract) => contract.id === "tasknotes.task",
+  );
+  if (!taskContract)
+    throw new Error("TaskNotes pack provides no task contract.");
   return {
     manifest_version: 1,
     id: "dev.tasknotes.planner",
@@ -28,13 +40,7 @@ export function buildPlannerManifest({ appUrl, development = false }) {
     icon: `${origin}/tasknotes-mark.svg`,
     redirect_uris: redirectUris,
     requirements: {
-      contracts: [
-        {
-          id: "tasknotes.task",
-          version: TASKNOTES_SPEC_VERSION,
-          digest: TASKNOTES_CONTRACT_DIGEST,
-        },
-      ],
+      contracts: [taskContract],
       capabilities: {
         contract_version: 1,
         required: [...requiredCapabilities],
@@ -50,7 +56,7 @@ export function buildPlannerManifest({ appUrl, development = false }) {
       ],
     },
     provisions: {
-      type_packs: [],
+      type_packs: [typePack],
       configuration: [
         {
           requirement: "tasknotes-planner-base-sources",
