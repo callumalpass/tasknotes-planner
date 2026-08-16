@@ -634,6 +634,21 @@ select:focus-visible {
   background: var(--weekend);
 }
 
+.timeline-header.is-intraday .day-band {
+  padding-top: 8px;
+  border-left-color: var(--line-strong);
+}
+
+.timeline-header.is-intraday .day-band.weekend {
+  background: var(--weekend);
+}
+
+.hour-row span {
+  padding: 9px 0 0 5px;
+  border-left: 1px solid var(--line);
+  text-align: left;
+}
+
 .gantt-body {
   position: relative;
 }
@@ -736,6 +751,39 @@ button.task-ledger:hover,
     var(--line) calc(var(--cell-width, 15px) - 1px),
     var(--line) var(--cell-width, 15px)
   );
+}
+
+.timeline-row.is-intraday {
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0,
+      transparent var(--workday-start),
+      color-mix(in srgb, var(--accent-soft) 45%, transparent)
+        var(--workday-start),
+      color-mix(in srgb, var(--accent-soft) 45%, transparent)
+        calc(var(--workday-start) + var(--workday-width)),
+      transparent calc(var(--workday-start) + var(--workday-width)),
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--minor-cell-width) - 1px),
+      var(--line) calc(var(--minor-cell-width) - 1px),
+      var(--line) var(--minor-cell-width)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--cell-width) - 1px),
+      var(--line-strong) calc(var(--cell-width) - 1px),
+      var(--line-strong) var(--cell-width)
+    );
+  background-size:
+    var(--cell-width) 100%,
+    auto,
+    auto;
 }
 
 .group-row .timeline-row {
@@ -1087,7 +1135,7 @@ button.task-ledger:hover,
   color: var(--ink-muted);
 }
 
-.task-inspector form > label {
+.planning-field {
   display: grid;
   grid-template-columns: 92px 1fr;
   align-items: center;
@@ -1095,12 +1143,19 @@ button.task-ledger:hover,
   border-bottom: 1px solid var(--line);
 }
 
-.task-inspector form > label > span {
+.planning-field > span {
   color: var(--ink-soft);
   font-size: 14px;
 }
 
-.task-inspector input[type="date"] {
+.date-time-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 6px;
+}
+
+.task-inspector input[type="date"],
+.task-inspector input[type="time"] {
   min-width: 0;
   height: 38px;
   padding: 0 7px;
@@ -1109,6 +1164,10 @@ button.task-ledger:hover,
   background: var(--paper);
   font-family: "Azeret Mono", monospace;
   font-size: 12px;
+}
+
+.task-inspector input[type="time"]:disabled {
+  opacity: 0.45;
 }
 
 .field-help {

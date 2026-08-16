@@ -59,6 +59,41 @@ describe("GanttChart interactions", () => {
     });
   });
 
+  it("places unscheduled work at an explicit intraday time", async () => {
+    const task = makeTask({ id: "intraday", title: "Intraday" });
+    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={7}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={onScheduleChange}
+        onSelect={() => undefined}
+        onZoom={() => undefined}
+      />,
+    );
+
+    const handle = screen.getByRole("button", { name: "Drag to schedule" });
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      clientX: 360,
+      pointerId: 4,
+    });
+    fireEvent.pointerMove(handle, { clientX: 420, pointerId: 4 });
+    fireEvent.pointerUp(handle, { clientX: 420, pointerId: 4 });
+
+    await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
+    expect(onScheduleChange.mock.calls[0][1]).toEqual({
+      due: undefined,
+      scheduled: expect.stringMatching(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:(00|15|30|45):00$/,
+      ),
+    });
+  });
+
   it("draws an edge relationship and stores it on the target", async () => {
     const source = makeTask({
       id: "source",
@@ -119,5 +154,44 @@ describe("GanttChart interactions", () => {
     expect(onDependenciesChange).toHaveBeenCalledWith(target, [
       { uid: "source", reltype: "FINISHTOSTART" },
     ]);
+  });
+
+  it("moves timed tasks in quarter-hour increments at the closest scale", async () => {
+    const task = makeTask({
+      id: "timed",
+      title: "Timed task",
+      scheduled: "2026-08-17T09:30:00",
+      due: "2026-08-17T10:30:00",
+    });
+    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={7}
+        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+        onScheduleChange={onScheduleChange}
+        onSelect={() => undefined}
+        onZoom={() => undefined}
+      />,
+    );
+
+    const bar = screen.getByRole("button", { name: /Timed task, .*09:30/ });
+    fireEvent.pointerDown(bar, {
+      button: 0,
+      clientX: 600,
+      pointerId: 3,
+    });
+    fireEvent.pointerMove(bar, { clientX: 624, pointerId: 3 });
+    fireEvent.pointerUp(bar, { clientX: 624, pointerId: 3 });
+
+    await waitFor(() =>
+      expect(onScheduleChange).toHaveBeenCalledWith(task, {
+        scheduled: "2026-08-17T10:30:00",
+        due: "2026-08-17T11:30:00",
+      }),
+    );
   });
 });

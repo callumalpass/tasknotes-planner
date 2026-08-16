@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clampZoom,
   projectLabel,
+  TIMELINE_ZOOMS,
   taskSpan,
   withSchedule,
   zoomDefinition,
@@ -279,7 +280,7 @@ export function Planner({
           <output aria-live="polite">{zoomDefinition(zoom).label}</output>
           <button
             aria-label="Zoom in"
-            disabled={zoom >= 5}
+            disabled={zoom >= TIMELINE_ZOOMS.length - 1}
             type="button"
             onClick={() => setZoom((value) => clampZoom(value + 1))}
           >

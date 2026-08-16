@@ -94,4 +94,30 @@ describe("TaskInspector", () => {
       ]),
     );
   });
+
+  it("adds intraday times using canonical TaskNotes timestamps", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[task]}
+        task={task}
+        onClose={() => undefined}
+        onSave={onSave}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Scheduled time"), {
+      target: { value: "09:30" },
+    });
+    fireEvent.change(screen.getByLabelText("Due time"), {
+      target: { value: "11:15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(task, {
+        scheduled: "2026-08-17T09:30:00",
+        due: "2026-08-25T11:15:00",
+      }),
+    );
+  });
 });

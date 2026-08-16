@@ -24,7 +24,8 @@ it does not depend on TaskNotes' application source or a second local task copy.
 ## Timeline interactions
 
 - Use the minus and plus controls to move between quarter, month, fortnight,
-  week, work-week, and day scales. `Ctrl`/`Cmd` + wheel zooms around the pointer.
+  week, work-week, day, hour, and quarter-hour scales. `Ctrl`/`Cmd` + wheel
+  zooms around the pointer.
 - Drag a task bar to move its whole schedule. Drag either end to change its
   scheduled or due date. Drag an unscheduled row into the timeline to place it.
 - Focus a bar and use `Alt` + Left/Right Arrow for one-day keyboard moves. The
@@ -35,8 +36,10 @@ it does not depend on TaskNotes' application source or a second local task copy.
 - Select a task to edit dates, add or remove dependencies, or change a
   relationship type in the inspector.
 
-Date drags preserve any existing TaskNotes time-of-day and timezone suffix;
-only the calendar date changes.
+Date-only values remain all-day at intraday scales. Timestamped tasks snap by
+the visible hour or 15-minute interval, and placing unscheduled work in an
+intraday view creates a TaskNotes timestamp. The inspector can add, change, or
+remove times; existing seconds and timezone suffixes are preserved.
 
 ## Development
 

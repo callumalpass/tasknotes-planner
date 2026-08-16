@@ -31,10 +31,15 @@ over the timeline grid.
 
 ## Interaction contract
 
-Zoom is continuous enough for orientation but resolves to six legible authored
+Zoom is continuous enough for orientation but resolves to eight legible authored
 scales. The date beneath the pointer (or viewport centre for buttons) remains
 anchored while zooming. Schedule edits preview in place and persist on drop;
 repository failures restore the previous task.
+
+At the hour and quarter-hour scales, days become ruled timecards. Midnight is a
+strong boundary, working hours receive a quiet blue wash, and the current-time
+rule replaces the broader today marker. Date-only tasks remain all-day instead
+of acquiring an arbitrary time.
 
 The whole bar moves a schedule, edge grips resize it, and the unscheduled affordance
 places new work. Relationship handles sit below bar edges so they do not compete

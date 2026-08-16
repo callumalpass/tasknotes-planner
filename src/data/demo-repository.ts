@@ -96,6 +96,13 @@ function demoTasks(today: string): PlannerTask[] {
       projects: ["[[Launch]]"],
     },
     {
+      id: "walkthrough",
+      title: "Stakeholder walkthrough",
+      scheduled: atTime(addDays(today, 2), "13:00"),
+      due: atTime(addDays(today, 2), "14:30"),
+      projects: ["[[Launch]]"],
+    },
+    {
       id: "qa",
       title: "Cross-platform acceptance pass",
       scheduled: addDays(today, 11),
@@ -122,8 +129,8 @@ function demoTasks(today: string): PlannerTask[] {
     {
       id: "vendor",
       title: "Confirm accessibility audit",
-      scheduled: addDays(today, 3),
-      due: addDays(today, 6),
+      scheduled: atTime(addDays(today, 3), "09:00"),
+      due: atTime(addDays(today, 3), "12:30"),
       projects: ["[[Operations]]"],
     },
   ];
@@ -136,4 +143,8 @@ function demoTasks(today: string): PlannerTask[] {
     completed: false,
     ...value,
   }));
+}
+
+function atTime(date: string, time: string): string {
+  return `${date}T${time}:00`;
 }

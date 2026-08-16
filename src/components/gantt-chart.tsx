@@ -10,18 +10,21 @@ import type {
 } from "react";
 
 import {
-  addDays,
   addOrReplaceDependency,
   canAddDependency,
+  DAY_MINUTES,
   dateFromDate,
   dateLabel,
-  daysBetween,
   dependencyRelationship,
   groupTasks,
+  minuteToPlanningValue,
+  planningMinute,
   resolveDependencyTask,
-  resizedSchedule,
-  shiftedSchedule,
+  resizedScheduleAt,
+  shiftedScheduleByMinutes,
+  taskHasTime,
   taskSpan,
+  taskTimelineSpan,
   timelineScale,
   withSchedule,
   type GanttRow,
@@ -102,7 +105,7 @@ export function GanttChart({
   const activeLink = useRef<LinkDrag | null>(null);
   const suppressClick = useRef(false);
   const pendingZoomAnchor = useRef<{
-    date: string;
+    minute: number;
     viewportX: number;
   } | null>(null);
   const statusTimer = useRef<number | null>(null);
@@ -113,6 +116,7 @@ export function GanttChart({
   const [interactionMessage, setInteractionMessage] =
     useState<InteractionMessage | null>(null);
   const today = dateFromDate(new Date());
+  const now = new Date();
   const scale = useMemo(
     () => timelineScale(tasks, zoom, today),
     [tasks, today, zoom],
@@ -125,7 +129,15 @@ export function GanttChart({
       height + (row.kind === "group" ? GROUP_HEIGHT : TASK_HEIGHT),
     0,
   );
-  const todayX = daysBetween(scale.start, today) * scale.cellWidth;
+  const scaleStartMinute = planningMinute(scale.start)!;
+  const currentMinute = planningMinute(
+    `${today}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:00`,
+  )!;
+  const todayX = minuteX(
+    scaleStartMinute,
+    scale.intraday ? currentMinute : planningMinute(today)!,
+    scale.cellWidth,
+  );
 
   useLayoutEffect(() => {
     const surface = scroller.current;
@@ -137,19 +149,18 @@ export function GanttChart({
     ) {
       const taskColumn = taskColumnWidth(surface);
       const pending = pendingZoomAnchor.current;
-      const viewportX = pending?.viewportX ?? surface.clientWidth / 2;
-      const anchorDate =
-        pending?.date ??
-        addDays(
-          previous.start,
-          Math.round(
-            (surface.scrollLeft + viewportX - taskColumn) / previous.cellWidth,
-          ),
-        );
+      const viewportX =
+        pending?.viewportX ??
+        taskColumn + (surface.clientWidth - taskColumn) / 2;
+      const anchorMinute =
+        pending?.minute ??
+        planningMinute(previous.start)! +
+          ((surface.scrollLeft + viewportX - taskColumn) / previous.cellWidth) *
+            DAY_MINUTES;
       surface.scrollLeft = Math.max(
         0,
         taskColumn +
-          daysBetween(scale.start, anchorDate) * scale.cellWidth -
+          minuteX(planningMinute(scale.start)!, anchorMinute, scale.cellWidth) -
           viewportX,
       );
     }
@@ -163,7 +174,8 @@ export function GanttChart({
     const surface = scroller.current;
     if (!surface) return;
     const taskColumn = taskColumnWidth(surface);
-    const left = Math.max(0, taskColumn + todayX - surface.clientWidth * 0.55);
+    const targetX = taskColumn + (surface.clientWidth - taskColumn) / 2;
+    const left = Math.max(0, taskColumn + todayX - targetX);
     surface.scrollTo({
       left,
       behavior: todayRequest ? "smooth" : "auto",
@@ -249,27 +261,42 @@ export function GanttChart({
   function moveScheduleDrag(event: { clientX: number }) {
     const current = scheduleDrag.current;
     if (!current) return;
-    const delta = Math.round(
-      (event.clientX - current.originClientX) / scale.cellWidth,
-    );
+    const rawDelta =
+      ((event.clientX - current.originClientX) / scale.cellWidth) * DAY_MINUTES;
+    const step =
+      scale.intraday && taskHasTime(current.task)
+        ? scale.snapMinutes
+        : DAY_MINUTES;
+    const delta = Math.round(rawDelta / step) * step;
     const moved = Math.abs(event.clientX - current.originClientX) >= 4;
     let update = current.update;
-    if (current.kind === "move") update = shiftedSchedule(current.task, delta);
+    if (current.kind === "move")
+      update = shiftedScheduleByMinutes(current.task, delta);
     else if (current.kind === "place") {
-      const day = Math.max(
+      const offset = Math.max(
         0,
         Math.min(
-          scale.days.length - 1,
-          Math.floor((event.clientX - current.timelineLeft) / scale.cellWidth),
+          scale.days.length * DAY_MINUTES - scale.snapMinutes,
+          ((event.clientX - current.timelineLeft) / scale.cellWidth) *
+            DAY_MINUTES,
         ),
       );
-      update = { scheduled: addDays(scale.start, day), due: undefined };
+      const snapped =
+        Math.floor(offset / scale.snapMinutes) * scale.snapMinutes;
+      update = {
+        scheduled: minuteToPlanningValue(
+          planningMinute(scale.start)! + snapped,
+          undefined,
+          scale.intraday,
+        ),
+        due: undefined,
+      };
     } else {
-      const span = taskSpan(current.task);
+      const span = taskTimelineSpan(current.task, step);
       if (span) {
         const edge = current.kind === "resize-start" ? "start" : "finish";
-        const origin = edge === "start" ? span.start : span.end;
-        update = resizedSchedule(current.task, edge, addDays(origin, delta));
+        const origin = edge === "start" ? span.startMinute : span.endMinute;
+        update = resizedScheduleAt(current.task, edge, origin + delta, step);
       }
     }
     scheduleDrag.current = { ...current, update, changed: moved };
@@ -317,17 +344,21 @@ export function GanttChart({
   function nudgeSchedule(
     task: PlannerTask,
     kind: Exclude<ScheduleDragKind, "place">,
-    days: number,
+    direction: number,
   ) {
-    const span = taskSpan(task);
+    const step =
+      scale.intraday && taskHasTime(task) ? scale.snapMinutes : DAY_MINUTES;
+    const span = taskTimelineSpan(task, step);
     if (!span) return;
     const update =
       kind === "move"
-        ? shiftedSchedule(task, days)
-        : resizedSchedule(
+        ? shiftedScheduleByMinutes(task, direction * step)
+        : resizedScheduleAt(
             task,
             kind === "resize-start" ? "start" : "finish",
-            addDays(kind === "resize-start" ? span.start : span.end, days),
+            (kind === "resize-start" ? span.startMinute : span.endMinute) +
+              direction * step,
+            step,
           );
     void commitSchedule(task, update);
   }
@@ -436,10 +467,15 @@ export function GanttChart({
     const surface = scroller.current;
     if (!surface || event.deltaY === 0) return;
     const bounds = surface.getBoundingClientRect();
-    const viewportX = event.clientX - bounds.left;
+    const viewportX = Math.max(
+      taskColumnWidth(surface),
+      event.clientX - bounds.left,
+    );
     const timelineX = surface.scrollLeft + viewportX - taskColumnWidth(surface);
     pendingZoomAnchor.current = {
-      date: addDays(scale.start, Math.round(timelineX / scale.cellWidth)),
+      minute:
+        planningMinute(scale.start)! +
+        (timelineX / scale.cellWidth) * DAY_MINUTES,
       viewportX,
     };
     onZoom(event.deltaY < 0 ? 1 : -1);
@@ -472,14 +508,13 @@ export function GanttChart({
             {rows.map((row) =>
               row.kind === "group" ? (
                 <GroupRow
-                  cellWidth={scale.cellWidth}
                   key={row.id}
                   row={row}
+                  scale={scale}
                   timelineWidth={timelineWidth}
                 />
               ) : (
                 <TaskRow
-                  cellWidth={scale.cellWidth}
                   key={row.id}
                   linkDrag={linkDrag}
                   preview={
@@ -488,7 +523,7 @@ export function GanttChart({
                       : undefined
                   }
                   row={row}
-                  scaleStart={scale.start}
+                  scale={scale}
                   selected={selectedId === row.task.id}
                   suppressClickRef={suppressClick}
                   timelineWidth={timelineWidth}
@@ -507,10 +542,9 @@ export function GanttChart({
             )}
             <DependencyLayer
               bodyHeight={bodyHeight}
-              cellWidth={scale.cellWidth}
               linkDrag={linkDrag}
               rows={rows}
-              scaleStart={scale.start}
+              scale={scale}
               timelineWidth={timelineWidth}
             />
             {todayX >= 0 && todayX <= timelineWidth ? (
@@ -518,7 +552,7 @@ export function GanttChart({
                 className="today-line"
                 style={{ left: `calc(var(--task-column) + ${todayX}px)` }}
               >
-                <span>Today</span>
+                <span>{scale.intraday ? "Now" : "Today"}</span>
               </div>
             ) : null}
           </div>
@@ -548,12 +582,66 @@ function TimelineHeader({
   scale: ReturnType<typeof timelineScale>;
   width: number;
 }) {
+  if (scale.intraday) {
+    const labelHours = scale.cellWidth >= 500 ? 3 : 6;
+    return (
+      <div
+        aria-hidden="true"
+        className="timeline-header is-intraday"
+        style={{ left: TASK_COLUMN, width }}
+      >
+        <div className="month-row">
+          {scale.days.map((date, index) => (
+            <span
+              className={`day-band${[0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()) ? " weekend" : ""}`}
+              key={date}
+              style={{
+                left: index * scale.cellWidth,
+                width: scale.cellWidth,
+              }}
+            >
+              {dateLabel(date, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: undefined,
+              })}
+            </span>
+          ))}
+        </div>
+        <div className="date-row hour-row">
+          {scale.days.flatMap((date, dayIndex) =>
+            Array.from({ length: 24 / labelHours }, (_, index) => {
+              const hour = index * labelHours;
+              return (
+                <span
+                  key={`${date}-${hour}`}
+                  style={{
+                    left:
+                      dayIndex * scale.cellWidth +
+                      (hour / 24) * scale.cellWidth,
+                    width: (labelHours / 24) * scale.cellWidth,
+                  }}
+                >
+                  {String(hour).padStart(2, "0")}:00
+                </span>
+              );
+            }),
+          )}
+        </div>
+      </div>
+    );
+  }
   const months = segmentDates(scale.days, (date) => date.slice(0, 7));
   const weekLabels = scale.days.flatMap((date, index) =>
     new Date(`${date}T00:00:00Z`).getUTCDay() === 1 ? [{ date, index }] : [],
   );
   return (
-    <div className="timeline-header" style={{ left: TASK_COLUMN, width }}>
+    <div
+      aria-hidden="true"
+      className="timeline-header"
+      style={{ left: TASK_COLUMN, width }}
+    >
       <div className="month-row">
         {months.map((month) => (
           <span
@@ -605,11 +693,11 @@ function TimelineHeader({
 function GroupRow({
   row,
   timelineWidth,
-  cellWidth,
+  scale,
 }: {
   row: Extract<GanttRow, { kind: "group" }>;
   timelineWidth: number;
-  cellWidth: number;
+  scale: ReturnType<typeof timelineScale>;
 }) {
   return (
     <div className="gantt-row group-row" style={{ height: GROUP_HEIGHT }}>
@@ -618,8 +706,8 @@ function GroupRow({
         <small>{row.count}</small>
       </div>
       <div
-        className="timeline-row"
-        style={timelineRowStyle(cellWidth, timelineWidth)}
+        className={`timeline-row${scale.intraday ? " is-intraday" : ""}`}
+        style={timelineRowStyle(scale, timelineWidth)}
       />
     </div>
   );
@@ -628,8 +716,7 @@ function GroupRow({
 function TaskRow({
   row,
   timelineWidth,
-  scaleStart,
-  cellWidth,
+  scale,
   selected,
   preview,
   linkDrag,
@@ -647,8 +734,7 @@ function TaskRow({
 }: {
   row: Extract<GanttRow, { kind: "task" }>;
   timelineWidth: number;
-  scaleStart: string;
-  cellWidth: number;
+  scale: ReturnType<typeof timelineScale>;
   selected: boolean;
   preview?: ScheduleUpdate;
   linkDrag: LinkDrag | null;
@@ -665,7 +751,7 @@ function TaskRow({
   onNudge(
     task: PlannerTask,
     kind: Exclude<ScheduleDragKind, "place">,
-    days: number,
+    direction: number,
   ): void;
   onBeginLink(
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -677,11 +763,17 @@ function TaskRow({
   onCancelLink(): void;
 }) {
   const task = preview ? withSchedule(row.task, preview) : row.task;
-  const existingSpan = taskSpan(row.task);
-  const span = taskSpan(task);
-  const startX = span ? daysBetween(scaleStart, span.start) * cellWidth : 0;
+  const existingSpan = taskTimelineSpan(row.task, scale.snapMinutes);
+  const span = taskTimelineSpan(task, scale.snapMinutes);
+  const scaleStartMinute = planningMinute(scale.start)!;
+  const startX = span
+    ? minuteX(scaleStartMinute, span.startMinute, scale.cellWidth)
+    : 0;
   const width = span
-    ? Math.max(cellWidth, (daysBetween(span.start, span.end) + 1) * cellWidth)
+    ? Math.max(
+        (scale.snapMinutes / DAY_MINUTES) * scale.cellWidth,
+        minuteX(span.startMinute, span.endMinute, scale.cellWidth),
+      )
     : 0;
 
   function select() {
@@ -725,20 +817,20 @@ function TaskRow({
         ) : null}
       </button>
       <div
-        className="timeline-row"
-        style={timelineRowStyle(cellWidth, timelineWidth)}
+        className={`timeline-row${scale.intraday ? " is-intraday" : ""}`}
+        style={timelineRowStyle(scale, timelineWidth)}
       >
         {existingSpan && span ? (
           <div
             className={`task-bar${span.milestone ? " is-milestone" : ""}${row.task.completed ? " is-complete" : ""}${preview ? " is-preview" : ""}`}
             style={
               span.milestone
-                ? { left: startX + cellWidth / 2 }
+                ? { left: startX }
                 : { left: startX + 3, width: Math.max(8, width - 6) }
             }
           >
             <button
-              aria-label={`${row.task.title}, ${span.milestone ? `due ${dateLabel(span.start)}` : `${dateLabel(span.start)} to ${dateLabel(span.end)}`}. Drag to move; Alt plus arrow keys also move by one day.`}
+              aria-label={`${row.task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${scale.intraday && taskHasTime(task) ? (scale.snapMinutes === 15 ? "15 minutes" : "one hour") : "one day"}.`}
               className="task-bar-main"
               type="button"
               onClick={select}
@@ -873,15 +965,13 @@ function LinkPort({
 
 function DependencyLayer({
   rows,
-  scaleStart,
-  cellWidth,
+  scale,
   timelineWidth,
   bodyHeight,
   linkDrag,
 }: {
   rows: readonly GanttRow[];
-  scaleStart: string;
-  cellWidth: number;
+  scale: ReturnType<typeof timelineScale>;
   timelineWidth: number;
   bodyHeight: number;
   linkDrag: LinkDrag | null;
@@ -898,14 +988,17 @@ function DependencyLayer({
     offset += height;
   }
   const paths: Array<{ key: string; d: string }> = [];
+  const scaleStartMinute = planningMinute(scale.start)!;
   for (const row of rows) {
     if (row.kind !== "task") continue;
-    const targetSpan = taskSpan(row.task);
+    const targetSpan = taskTimelineSpan(row.task, scale.snapMinutes);
     const targetY = taskY.get(row.task.id);
     if (!targetSpan || targetY === undefined) continue;
     for (const dependency of row.task.blockedBy) {
       const source = resolveDependencyTask([...tasks.values()], dependency.uid);
-      const sourceSpan = source ? taskSpan(source) : null;
+      const sourceSpan = source
+        ? taskTimelineSpan(source, scale.snapMinutes)
+        : null;
       const sourceY = source ? taskY.get(source.id) : undefined;
       if (!sourceSpan || sourceY === undefined) continue;
       const fromStart =
@@ -914,17 +1007,16 @@ function DependencyLayer({
       const toEnd =
         dependency.reltype === "FINISHTOFINISH" ||
         dependency.reltype === "STARTTOFINISH";
-      const x1 =
-        (daysBetween(
-          scaleStart,
-          fromStart ? sourceSpan.start : sourceSpan.end,
-        ) +
-          (fromStart ? 0 : 1)) *
-        cellWidth;
-      const x2 =
-        (daysBetween(scaleStart, toEnd ? targetSpan.end : targetSpan.start) +
-          (toEnd ? 1 : 0)) *
-        cellWidth;
+      const x1 = minuteX(
+        scaleStartMinute,
+        fromStart ? sourceSpan.startMinute : sourceSpan.endMinute,
+        scale.cellWidth,
+      );
+      const x2 = minuteX(
+        scaleStartMinute,
+        toEnd ? targetSpan.endMinute : targetSpan.startMinute,
+        scale.cellWidth,
+      );
       paths.push({
         key: `${dependency.uid}-${row.task.id}-${dependency.reltype}`,
         d: dependencyPath(x1, sourceY, x2, targetY),
@@ -974,19 +1066,31 @@ function DependencyLayer({
 function scheduleLabel(task: PlannerTask): string {
   const span = taskSpan(task);
   if (!span) return "Not scheduled";
-  return span.milestone
-    ? `Due ${dateLabel(span.start)}`
-    : `${dateLabel(span.start)} — ${dateLabel(span.end)}`;
+  if (span.milestone) return `Due ${scheduleValueLabel(task.due!)}`;
+  return `${scheduleValueLabel(task.scheduled!)} — ${scheduleValueLabel(task.due ?? task.scheduled!)}`;
 }
 
 function timelineRowStyle(
-  cellWidth: number,
+  scale: ReturnType<typeof timelineScale>,
   timelineWidth: number,
 ): CSSProperties {
   return {
-    "--cell-width": `${cellWidth}px`,
+    "--cell-width": `${scale.cellWidth}px`,
+    "--minor-cell-width": `${(scale.snapMinutes / DAY_MINUTES) * scale.cellWidth}px`,
+    "--workday-start": `${(8 / 24) * scale.cellWidth}px`,
+    "--workday-width": `${(10 / 24) * scale.cellWidth}px`,
     width: timelineWidth,
   } as CSSProperties;
+}
+
+function minuteX(startMinute: number, minute: number, dayWidth: number) {
+  return ((minute - startMinute) / DAY_MINUTES) * dayWidth;
+}
+
+function scheduleValueLabel(value: string): string {
+  const time = /T(\d{2}:\d{2})/.exec(value)?.[1];
+  const date = value.slice(0, 10);
+  return time ? `${dateLabel(date)} ${time}` : dateLabel(date);
 }
 
 function dependencyPath(x1: number, y1: number, x2: number, y2: number) {

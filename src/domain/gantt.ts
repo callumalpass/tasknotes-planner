@@ -1,3 +1,5 @@
+import { hasTimeComponent } from "@tasknotes/model/date";
+
 import type {
   PlannerTask,
   ScheduleUpdate,
@@ -6,12 +8,70 @@ import type {
 } from "./task";
 
 export const TIMELINE_ZOOMS = [
-  { label: "Quarters", cellWidth: 3, before: 184, after: 548 },
-  { label: "Months", cellWidth: 6, before: 92, after: 274 },
-  { label: "Fortnights", cellWidth: 10, before: 63, after: 154 },
-  { label: "Weeks", cellWidth: 15, before: 42, after: 98 },
-  { label: "Work weeks", cellWidth: 22, before: 32, after: 70 },
-  { label: "Days", cellWidth: 34, before: 21, after: 42 },
+  {
+    label: "Quarters",
+    cellWidth: 3,
+    before: 184,
+    after: 548,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Months",
+    cellWidth: 6,
+    before: 92,
+    after: 274,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Fortnights",
+    cellWidth: 10,
+    before: 63,
+    after: 154,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Weeks",
+    cellWidth: 15,
+    before: 42,
+    after: 98,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Work weeks",
+    cellWidth: 22,
+    before: 32,
+    after: 70,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Days",
+    cellWidth: 34,
+    before: 21,
+    after: 42,
+    snapMinutes: 1440,
+    intraday: false,
+  },
+  {
+    label: "Hours",
+    cellWidth: 240,
+    before: 3,
+    after: 7,
+    snapMinutes: 60,
+    intraday: true,
+  },
+  {
+    label: "Quarter hours",
+    cellWidth: 576,
+    before: 1,
+    after: 3,
+    snapMinutes: 15,
+    intraday: true,
+  },
 ] as const;
 
 export type TimelineZoom = number;
@@ -27,6 +87,15 @@ export interface TimelineScale {
   end: string;
   days: string[];
   cellWidth: number;
+  snapMinutes: number;
+  intraday: boolean;
+}
+
+export interface TimelineTaskSpan {
+  startMinute: number;
+  endMinute: number;
+  milestone: boolean;
+  timed: boolean;
 }
 
 export type GanttRow =
@@ -34,6 +103,7 @@ export type GanttRow =
   | { kind: "task"; id: string; groupId: string; task: PlannerTask };
 
 const DAY_MS = 86_400_000;
+export const DAY_MINUTES = 1_440;
 
 export function datePart(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -69,13 +139,17 @@ export function timelineScale(
     (value, date) => (compareDates(date, value) > 0 ? date : value),
     addDays(today, bounds.after),
   );
-  const start = startOfWeek(addDays(earliest, -7));
-  const end = addDays(latest, 21);
+  const start = bounds.intraday
+    ? addDays(earliest, -1)
+    : startOfWeek(addDays(earliest, -7));
+  const end = addDays(latest, bounds.intraday ? 1 : 21);
   return {
     start,
     end,
     days: dateSequence(start, end),
     cellWidth: bounds.cellWidth,
+    snapMinutes: bounds.snapMinutes,
+    intraday: bounds.intraday,
   };
 }
 
@@ -95,18 +169,151 @@ export function replaceDatePart(
   return originalDate ? `${date}${original!.slice(originalDate.length)}` : date;
 }
 
+export function timePart(value: string | undefined): string {
+  if (!hasTimeComponent(value)) return "";
+  return /T(\d{2}:\d{2})/.exec(value!)?.[1] ?? "";
+}
+
+export function replaceDateAndTime(
+  original: string | undefined,
+  date: string,
+  time: string,
+): string {
+  if (!time) return date;
+  const existing = original?.match(/^\d{4}-\d{2}-\d{2}([T ])\d{2}:\d{2}(.*)$/);
+  return `${date}${existing?.[1] ?? "T"}${time}${existing?.[2] || ":00"}`;
+}
+
+export function planningMinute(
+  value: string | undefined,
+  bound: "start" | "end" = "start",
+): number | undefined {
+  const date = datePart(value);
+  if (!date) return undefined;
+  const time = timePart(value);
+  const minute = time
+    ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+    : bound === "end"
+      ? DAY_MINUTES
+      : 0;
+  return dateMs(date) / 60_000 + minute;
+}
+
+export function minuteToPlanningValue(
+  minute: number,
+  original: string | undefined,
+  timed = true,
+): string {
+  const day = Math.floor(minute / DAY_MINUTES);
+  const minuteOfDay = minute - day * DAY_MINUTES;
+  const date = dateFromMs(day * DAY_MS);
+  if (!timed) return date;
+  const hours = String(Math.floor(minuteOfDay / 60)).padStart(2, "0");
+  const minutes = String(minuteOfDay % 60).padStart(2, "0");
+  return replaceDateAndTime(original, date, `${hours}:${minutes}`);
+}
+
+export function taskHasTime(task: PlannerTask): boolean {
+  return hasTimeComponent(task.scheduled) || hasTimeComponent(task.due);
+}
+
+export function taskTimelineSpan(
+  task: PlannerTask,
+  snapMinutes: number,
+): TimelineTaskSpan | null {
+  const scheduled = planningMinute(task.scheduled, "start");
+  const due = planningMinute(task.due, "end");
+  const timed = taskHasTime(task);
+  if (scheduled === undefined && due === undefined) return null;
+  if (scheduled === undefined && due !== undefined) {
+    const point = hasTimeComponent(task.due) ? due : due - DAY_MINUTES / 2;
+    return {
+      startMinute: point,
+      endMinute: point,
+      milestone: true,
+      timed,
+    };
+  }
+  const defaultDuration = hasTimeComponent(task.scheduled)
+    ? snapMinutes
+    : DAY_MINUTES;
+  return {
+    startMinute: scheduled!,
+    endMinute:
+      due === undefined
+        ? scheduled! + defaultDuration
+        : Math.max(scheduled! + (timed ? 1 : snapMinutes), due),
+    milestone: false,
+    timed,
+  };
+}
+
+export function shiftedScheduleByMinutes(
+  task: PlannerTask,
+  minutes: number,
+): ScheduleUpdate {
+  const timed = taskHasTime(task);
+  const delta = timed
+    ? minutes
+    : Math.round(minutes / DAY_MINUTES) * DAY_MINUTES;
+  function shift(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const minute = planningMinute(value, "start")!;
+    return minuteToPlanningValue(
+      minute + delta,
+      value,
+      hasTimeComponent(value),
+    );
+  }
+  return { scheduled: shift(task.scheduled), due: shift(task.due) };
+}
+
+export function resizedScheduleAt(
+  task: PlannerTask,
+  edge: "start" | "finish",
+  minute: number,
+  snapMinutes: number,
+): ScheduleUpdate {
+  const span = taskTimelineSpan(task, snapMinutes);
+  if (!span)
+    return {
+      scheduled: minuteToPlanningValue(
+        minute,
+        undefined,
+        snapMinutes < DAY_MINUTES,
+      ),
+    };
+  if (!span.timed) {
+    return resizedSchedule(
+      task,
+      edge,
+      minuteToPlanningValue(minute, undefined, false),
+    );
+  }
+  if (span.milestone)
+    return {
+      scheduled: undefined,
+      due: minuteToPlanningValue(minute, task.due, true),
+    };
+  if (edge === "start") {
+    const clamped = Math.min(minute, span.endMinute - snapMinutes);
+    return {
+      scheduled: minuteToPlanningValue(clamped, task.scheduled, true),
+      due: task.due,
+    };
+  }
+  const clamped = Math.max(minute, span.startMinute + snapMinutes);
+  return {
+    scheduled: task.scheduled,
+    due: minuteToPlanningValue(clamped, task.due, true),
+  };
+}
+
 export function shiftedSchedule(
   task: PlannerTask,
   days: number,
 ): ScheduleUpdate {
-  const scheduled = datePart(task.scheduled);
-  const due = datePart(task.due);
-  return {
-    scheduled: scheduled
-      ? replaceDatePart(task.scheduled, addDays(scheduled, days))
-      : undefined,
-    due: due ? replaceDatePart(task.due, addDays(due, days)) : undefined,
-  };
+  return shiftedScheduleByMinutes(task, days * DAY_MINUTES);
 }
 
 export function resizedSchedule(

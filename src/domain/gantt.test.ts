@@ -4,8 +4,12 @@ import {
   dependencyRelationship,
   groupTasks,
   replaceDatePart,
+  replaceDateAndTime,
   resizedSchedule,
+  resizedScheduleAt,
   shiftedSchedule,
+  shiftedScheduleByMinutes,
+  taskTimelineSpan,
   taskSpan,
   timelineScale,
 } from "./gantt";
@@ -66,6 +70,21 @@ describe("timelineScale", () => {
     expect(scale.cellWidth).toBe(15);
     expect(scale.days.at(-1)).toBe(scale.end);
   });
+
+  it("provides hour and quarter-hour intraday scales", () => {
+    const hourly = timelineScale([], 6, "2026-08-16");
+    const quarterHourly = timelineScale([], 7, "2026-08-16");
+    expect(hourly).toMatchObject({
+      cellWidth: 240,
+      intraday: true,
+      snapMinutes: 60,
+    });
+    expect(quarterHourly).toMatchObject({
+      cellWidth: 576,
+      intraday: true,
+      snapMinutes: 15,
+    });
+  });
 });
 
 describe("schedule manipulation", () => {
@@ -98,6 +117,48 @@ describe("schedule manipulation", () => {
         "2026-08-24",
       ),
     ).toEqual({ scheduled: "2026-08-20", due: "2026-08-20" });
+  });
+
+  it("positions timed tasks within a day and preserves timestamp suffixes", () => {
+    const timed = task({
+      scheduled: "2026-08-17T09:30:00+10:00",
+      due: "2026-08-17T11:00:00+10:00",
+    });
+    const span = taskTimelineSpan(timed, 15)!;
+    expect(span.endMinute - span.startMinute).toBe(90);
+    expect(
+      taskTimelineSpan(timed, 24 * 60)!.endMinute -
+        taskTimelineSpan(timed, 24 * 60)!.startMinute,
+    ).toBe(90);
+    expect(shiftedScheduleByMinutes(timed, 45)).toEqual({
+      scheduled: "2026-08-17T10:15:00+10:00",
+      due: "2026-08-17T11:45:00+10:00",
+    });
+    expect(
+      resizedScheduleAt(timed, "finish", span.startMinute + 15, 15),
+    ).toMatchObject({ due: "2026-08-17T09:45:00+10:00" });
+  });
+
+  it("keeps date-only tasks all-day at intraday scales", () => {
+    const allDay = task({ scheduled: "2026-08-17", due: "2026-08-18" });
+    const span = taskTimelineSpan(allDay, 15)!;
+    expect(span.endMinute - span.startMinute).toBe(2 * 24 * 60);
+    expect(shiftedScheduleByMinutes(allDay, 3 * 60)).toEqual({
+      scheduled: "2026-08-17",
+      due: "2026-08-18",
+    });
+  });
+
+  it("adds or removes explicit time while preserving timestamp precision", () => {
+    expect(replaceDateAndTime(undefined, "2026-08-17", "09:30")).toBe(
+      "2026-08-17T09:30:00",
+    );
+    expect(
+      replaceDateAndTime("2026-08-17T08:00:30+10:00", "2026-08-18", "10:15"),
+    ).toBe("2026-08-18T10:15:30+10:00");
+    expect(
+      replaceDateAndTime("2026-08-17T08:00:30+10:00", "2026-08-18", ""),
+    ).toBe("2026-08-18");
   });
 });
 

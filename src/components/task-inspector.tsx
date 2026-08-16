@@ -6,8 +6,10 @@ import {
   canAddDependency,
   datePart,
   dependencyReferencesTask,
-  replaceDatePart,
+  planningMinute,
+  replaceDateAndTime,
   resolveDependencyTask,
+  timePart,
 } from "../domain/gantt";
 import { errorMessage } from "../data/outcome";
 
@@ -37,6 +39,8 @@ export function TaskInspector({
 }) {
   const [scheduled, setScheduled] = useState(datePart(task.scheduled) ?? "");
   const [due, setDue] = useState(datePart(task.due) ?? "");
+  const [scheduledTime, setScheduledTime] = useState(timePart(task.scheduled));
+  const [dueTime, setDueTime] = useState(timePart(task.due));
   const [saving, setSaving] = useState(false);
   const [dependencySaving, setDependencySaving] = useState(false);
   const [dependencySource, setDependencySource] = useState("");
@@ -55,8 +59,14 @@ export function TaskInspector({
       })),
     [allTasks, task.blockedBy],
   );
+  const scheduledValue = scheduled
+    ? replaceDateAndTime(task.scheduled, scheduled, scheduledTime)
+    : undefined;
+  const dueValue = due ? replaceDateAndTime(task.due, due, dueTime) : undefined;
   const validation =
-    scheduled && due && due < scheduled
+    scheduledValue &&
+    dueValue &&
+    planningMinute(scheduledValue, "start")! > planningMinute(dueValue, "end")!
       ? "Due date must be on or after the scheduled date."
       : "";
   const dependencyCandidates = useMemo(
@@ -79,10 +89,8 @@ export function TaskInspector({
     setScheduleError("");
     try {
       await onSave(task, {
-        scheduled: scheduled
-          ? replaceDatePart(task.scheduled, scheduled)
-          : undefined,
-        due: due ? replaceDatePart(task.due, due) : undefined,
+        scheduled: scheduledValue,
+        due: dueValue,
       });
     } catch (reason) {
       setScheduleError(errorMessage(reason));
@@ -147,26 +155,49 @@ export function TaskInspector({
       <form onSubmit={(event) => void submit(event)}>
         <div className="inspector-section-title">
           <CalendarRange aria-hidden="true" size={16} />
-          <span>Dates</span>
+          <span>Dates &amp; times</span>
         </div>
-        <label>
+        <div className="planning-field">
           <span>Scheduled</span>
-          <input
-            type="date"
-            value={scheduled}
-            onChange={(event) => setScheduled(event.target.value)}
-          />
-        </label>
-        <label>
+          <div className="date-time-inputs">
+            <input
+              aria-label="Scheduled"
+              type="date"
+              value={scheduled}
+              onChange={(event) => setScheduled(event.target.value)}
+            />
+            <input
+              aria-label="Scheduled time"
+              disabled={!scheduled}
+              step="900"
+              type="time"
+              value={scheduledTime}
+              onChange={(event) => setScheduledTime(event.target.value)}
+            />
+          </div>
+        </div>
+        <div className="planning-field">
           <span>Due</span>
-          <input
-            type="date"
-            value={due}
-            onChange={(event) => setDue(event.target.value)}
-          />
-        </label>
+          <div className="date-time-inputs">
+            <input
+              aria-label="Due"
+              type="date"
+              value={due}
+              onChange={(event) => setDue(event.target.value)}
+            />
+            <input
+              aria-label="Due time"
+              disabled={!due}
+              step="900"
+              type="time"
+              value={dueTime}
+              onChange={(event) => setDueTime(event.target.value)}
+            />
+          </div>
+        </div>
         <p className="field-help">
-          Two dates draw a bar. A due date on its own creates a milestone.
+          Times are optional. Date-only tasks stay all-day; a due value on its
+          own creates a milestone.
         </p>
         {validation || scheduleError ? (
           <p className="form-error" role="alert">
@@ -181,6 +212,8 @@ export function TaskInspector({
             onClick={() => {
               setScheduled("");
               setDue("");
+              setScheduledTime("");
+              setDueTime("");
             }}
           >
             Clear dates
