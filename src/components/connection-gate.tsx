@@ -1,4 +1,4 @@
-import { ArrowRight, Database, LoaderCircle } from "lucide-react";
+import { Database, LoaderCircle } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -8,7 +8,11 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { isAuthorizationCallback, plannerSession } from "../data/connect";
 import { MdbasePlannerRepository } from "../data/mdbase-repository";
@@ -44,7 +48,9 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
           );
         }
       })
-      .catch((reason: unknown) => active && setError(errorMessage(reason)));
+      .catch(
+        (reason: unknown) => active && setError(connectionErrorMessage(reason)),
+      );
     return () => {
       active = false;
     };
@@ -65,7 +71,7 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
         await plannerSession.authorize("choose", { timeoutMs: 60_000 }),
       );
     } catch (reason) {
-      setError(errorMessage(reason));
+      setError(connectionErrorMessage(reason));
     } finally {
       setOpening(false);
     }
@@ -93,11 +99,9 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
           <img alt="" src="/tasknotes-mark.svg" />
           <span>TaskNotes Planner</span>
         </div>
-        <p className="eyebrow">A connected planning surface</p>
-        <h1>See the work across time.</h1>
+        <h1>Plan tasks on a timeline.</h1>
         <p className="welcome-lede">
-          Open a TaskNotes collection to arrange scheduled work, inspect
-          dependencies, and bring the next handoff into view.
+          Open a TaskNotes collection to change dates and manage dependencies.
         </p>
         <div className="welcome-actions">
           <button
@@ -111,11 +115,10 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
             ) : (
               <Database aria-hidden="true" size={18} />
             )}
-            {opening ? "Opening mdbase…" : "Open a collection"}
+            {opening ? "Opening…" : "Open collection"}
           </button>
           <button className="text-action" type="button" onClick={onDemo}>
-            Explore with sample tasks
-            <ArrowRight aria-hidden="true" size={17} />
+            Use sample tasks
           </button>
         </div>
         {error || stateError ? (
@@ -129,29 +132,129 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
   );
 }
 
-function WelcomePreview() {
+const previewTasks = [
+  { label: "Research", start: 5, width: 26 },
+  { label: "Prototype", start: 18, width: 24 },
+  { label: "Review", start: 30, width: 22 },
+  { label: "Release", start: 43, width: 20 },
+] as const;
+
+type PreviewDrag = {
+  index: number;
+  pointerId: number;
+  startClientX: number;
+  startOffset: number;
+  trackWidth: number;
+};
+
+export function WelcomePreview() {
+  const [starts, setStarts] = useState<number[]>(() =>
+    previewTasks.map((task) => task.start),
+  );
+  const drag = useRef<PreviewDrag | null>(null);
+
+  const moveTask = useCallback((index: number, nextStart: number) => {
+    setStarts((current) => {
+      const maximum = 100 - previewTasks[index].width;
+      const clamped = Math.min(maximum, Math.max(0, nextStart));
+      if (clamped === current[index]) return current;
+      return current.map((start, taskIndex) =>
+        taskIndex === index ? clamped : start,
+      );
+    });
+  }, []);
+
+  const startDrag = useCallback(
+    (index: number, event: ReactPointerEvent<HTMLButtonElement>) => {
+      const track = event.currentTarget.parentElement;
+      if (!track) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      drag.current = {
+        index,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startOffset: starts[index],
+        trackWidth: track.getBoundingClientRect().width,
+      };
+    },
+    [starts],
+  );
+
+  const continueDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const active = drag.current;
+      if (!active || active.pointerId !== event.pointerId) return;
+      const delta =
+        ((event.clientX - active.startClientX) / active.trackWidth) * 100;
+      moveTask(active.index, active.startOffset + delta);
+    },
+    [moveTask],
+  );
+
+  const finishDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (drag.current?.pointerId !== event.pointerId) return;
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      drag.current = null;
+    },
+    [],
+  );
+
+  const moveWithKeyboard = useCallback(
+    (index: number, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      moveTask(index, starts[index] + direction * (event.shiftKey ? 5 : 2));
+    },
+    [moveTask, starts],
+  );
+
   return (
-    <div className="welcome-preview" aria-hidden="true">
+    <div
+      aria-label="Example timeline. Drag tasks to change their dates."
+      className="welcome-preview"
+      role="group"
+    >
       <div className="preview-topline">
         <span>LAUNCH PLAN</span>
         <span>AUG — SEP</span>
       </div>
-      {["Research", "Prototype", "Review", "Release"].map((label, index) => (
-        <div className="preview-row" key={label}>
-          <span>{label}</span>
-          <i
-            style={
-              {
-                "--preview-start": index * 11,
-                "--preview-width": 26 - index * 2,
-              } as CSSProperties
-            }
-          />
+      {previewTasks.map((task, index) => (
+        <div className="preview-row" key={task.label}>
+          <span>{task.label}</span>
+          <div className="preview-track">
+            <button
+              aria-label={`${task.label}: move task`}
+              className="preview-task"
+              style={
+                {
+                  "--preview-start": starts[index],
+                  "--preview-width": task.width,
+                } as CSSProperties
+              }
+              title="Drag to move task"
+              type="button"
+              onKeyDown={(event) => moveWithKeyboard(index, event)}
+              onPointerCancel={finishDrag}
+              onPointerDown={(event) => startDrag(index, event)}
+              onPointerMove={continueDrag}
+              onPointerUp={finishDrag}
+            />
+          </div>
         </div>
       ))}
       <b className="preview-today">TODAY</b>
     </div>
   );
+}
+
+function connectionErrorMessage(reason: unknown): string {
+  const message = errorMessage(reason);
+  if (/unknown application or redirect uri/i.test(message))
+    return "This Planner address is not registered. Open Planner from its main URL and try again.";
+  return message;
 }
 
 function unavailableMessage(reason: string): string {

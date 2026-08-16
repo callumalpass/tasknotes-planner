@@ -152,7 +152,6 @@ select:focus-visible {
   height: 34px;
 }
 
-.eyebrow,
 .planner-heading p,
 .task-inspector > header p,
 .preview-topline,
@@ -169,7 +168,7 @@ select:focus-visible {
 
 .welcome h1 {
   max-width: 540px;
-  margin: 13px 0 20px;
+  margin: 0 0 20px;
   font-size: clamp(48px, 6.2vw, 88px);
   font-weight: 700;
   letter-spacing: -0.045em;
@@ -270,13 +269,34 @@ select:focus-visible {
   border-right: 1px solid var(--line-strong);
 }
 
-.preview-row > i {
+.preview-track {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+.preview-task {
+  position: absolute;
+  top: 23px;
+  left: calc(var(--preview-start) * 1%);
   width: calc(var(--preview-width) * 1%);
   height: 15px;
-  margin-left: calc(var(--preview-start) * 1% + 24px);
+  padding: 0;
+  border: 0;
   border-radius: 3px;
   background: var(--accent);
+  cursor: grab;
   opacity: 0.75;
+  touch-action: none;
+}
+
+.preview-task:hover,
+.preview-task:focus-visible {
+  opacity: 1;
+}
+
+.preview-task:active {
+  cursor: grabbing;
 }
 
 .preview-today {
