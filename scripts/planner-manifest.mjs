@@ -1,7 +1,6 @@
-import {
-  buildTaskNotesMdbaseResources,
-  buildTaskNotesMdbaseTypePack,
-} from "@tasknotes/model/mdbase";
+import { loadCanonicalTaskNotesTypePack } from "./canonical-task-pack.mjs";
+
+export { TASKNOTES_TYPE_PACK_VERSION } from "./canonical-task-pack.mjs";
 
 export const requiredCapabilities = Object.freeze([
   "collection.inspect",
@@ -24,9 +23,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
   const redirectUris = [`${origin}/auth/mdbase/callback`];
   if (development && origin === "http://127.0.0.1:4174")
     redirectUris.push("http://localhost:4174/auth/mdbase/callback");
-  const typePack = await buildTaskNotesMdbaseTypePack(
-    buildTaskNotesMdbaseResources({ profiles: ["core-lite"] }),
-  );
+  const typePack = await loadCanonicalTaskNotesTypePack();
   const taskContract = typePack.provides.find(
     (contract) => contract.id === "tasknotes.task",
   );

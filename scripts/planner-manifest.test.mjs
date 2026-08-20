@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPlannerManifest } from "./planner-manifest.mjs";
+import {
+  buildPlannerManifest,
+  TASKNOTES_TYPE_PACK_VERSION,
+} from "./planner-manifest.mjs";
 
 describe("Planner mdbase manifest", () => {
   it("keeps production callbacks restricted to the production origin", async () => {
@@ -23,6 +26,10 @@ describe("Planner mdbase manifest", () => {
       },
     });
     expect(manifest.provisions.type_packs).toHaveLength(1);
+    expect(manifest.provisions.type_packs[0].manifest.version).toBe(
+      TASKNOTES_TYPE_PACK_VERSION,
+    );
+    expect(TASKNOTES_TYPE_PACK_VERSION).toBe("0.3.0-rc.12");
     expect(manifest.provisions.type_packs[0]).toMatchObject({
       manifest: {
         id: "tasknotes.task",

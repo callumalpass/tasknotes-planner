@@ -20,10 +20,13 @@ wide-screen sequencing and schedule review.
 
 Planner reads and updates these values through the canonical TaskNotes contract;
 it does not depend on TaskNotes' application source or a second local task copy.
-During authorization, Planner can provision the shared `core-lite` TaskNotes
-type pack from `@tasknotes/model`. This lets mdbase bring older collection
+During authorization, Planner provisions the canonical TaskNotes type pack
+published by `mdbase-contracts` and pinned in `vendor/mdbase-contracts`. This lets mdbase bring older collection
 definitions up to the required contract digest while preserving an existing
 customized task type.
+
+Run `pnpm contracts:sync` after intentionally updating the pinned catalog URL
+and digest to refresh the vendored pack from `mdbase.dev`.
 
 Status and priority choices come from each implementing task type's
 `tasknotes.task` binding, including labels, colours, ordering, defaults, and
