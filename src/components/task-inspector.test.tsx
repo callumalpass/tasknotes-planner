@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { TaskInspector } from "./task-inspector";
+import { MdbaseConnectError, type ConnectProblem } from "@mdbase-dev/connect";
 
 import type { PlannerTask } from "../domain/task";
 
@@ -70,6 +71,73 @@ describe("TaskInspector", () => {
         priority: "normal",
       }),
     );
+  });
+
+  it("does not roll an uncertain property choice back before recovery", async () => {
+    const problem = {
+      problem_version: 1,
+      code: "operation_outcome_unknown",
+      category: "transport",
+      recovery: "recover_mutation",
+      message: "The status change may already have completed.",
+      operation_outcome: "unknown",
+    } as unknown as ConnectProblem;
+    render(
+      <TaskInspector
+        allTasks={[task]}
+        task={task}
+        onClose={() => undefined}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+        onSaveProperties={vi
+          .fn()
+          .mockRejectedValue(new MdbaseConnectError(problem))}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "done" },
+    });
+
+    await screen.findByText("The status change may already have completed.");
+    expect(screen.getByLabelText("Status")).toHaveValue("done");
+  });
+
+  it("disables mutation-producing inspector controls while recovery is pending", () => {
+    const onSave = vi.fn();
+    const onSaveDependencies = vi.fn();
+    const onSaveProperties = vi.fn();
+    render(
+      <TaskInspector
+        allTasks={[task]}
+        mutationsDisabled
+        task={task}
+        onClose={() => undefined}
+        onSave={onSave}
+        onSaveDependencies={onSaveDependencies}
+        onSaveProperties={onSaveProperties}
+      />,
+    );
+
+    expect(screen.getByLabelText("Status")).toBeDisabled();
+    expect(screen.getByLabelText("Priority")).toBeDisabled();
+    expect(screen.getByLabelText("Scheduled")).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Save schedule" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Remove relationship from research",
+      }),
+    ).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onSaveDependencies).not.toHaveBeenCalled();
+    expect(onSaveProperties).not.toHaveBeenCalled();
   });
 
   it("adds and clears TaskNotes project memberships", async () => {

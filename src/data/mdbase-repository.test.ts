@@ -195,6 +195,38 @@ describe("MdbasePlannerRepository", () => {
       'note[\\"status\\"] == \\"open\\"',
     );
   });
+
+  it("recovers the persisted mutation handle without replaying a write", async () => {
+    const recover = vi.fn(async () => success({ revision: "task-2" }));
+    const pending = {
+      requestId: "request-1",
+      operation: "update",
+      fingerprint: "sha256:fingerprint",
+      status: "outcome_unknown",
+      createdAt: "2026-08-23T12:00:00.000Z",
+      recover,
+    } as const;
+    const update = vi.fn();
+    const connection = {
+      pendingMutations: vi.fn(() => [pending]),
+      pendingMutation: vi.fn(() => pending),
+      update,
+    } as unknown as MdbaseConnection<JsonObject>;
+    const repository = new MdbasePlannerRepository(connection);
+
+    expect(repository.pendingMutations()).toEqual([
+      {
+        requestId: "request-1",
+        operation: "update",
+        createdAt: "2026-08-23T12:00:00.000Z",
+      },
+    ]);
+
+    await repository.recoverPendingMutation("request-1");
+
+    expect(recover).toHaveBeenCalledWith({ timeoutMs: 30_000 });
+    expect(update).not.toHaveBeenCalled();
+  });
 });
 
 function success<Value>(value: Value) {

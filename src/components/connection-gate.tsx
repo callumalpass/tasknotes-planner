@@ -20,6 +20,9 @@ import { MdbasePlannerRepository } from "../data/mdbase-repository";
 import { errorMessage, requireOutcome } from "../data/outcome";
 import { Planner } from "./planner";
 
+const START_TIMEOUT_MS = 20_000;
+const CALLBACK_START_TIMEOUT_MS = 60_000;
+
 export function ConnectionGate({ onDemo }: { onDemo(): void }) {
   const snapshot = useSyncExternalStore(
     (listener) => plannerSession.subscribe(listener),
@@ -27,35 +30,36 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
     () => plannerSession.getSnapshot(),
   );
   const [error, setError] = useState("");
+  const [startError, setStartError] = useState("");
   const [opening, setOpening] = useState(false);
-  const handledCallback = useRef(false);
+  const mounted = useRef(true);
+
+  const startSession = useCallback(async () => {
+    setStartError("");
+    try {
+      const timeoutMs = isAuthorizationCallback(location.href)
+        ? CALLBACK_START_TIMEOUT_MS
+        : START_TIMEOUT_MS;
+      requireOutcome(await plannerSession.start({ timeoutMs }));
+    } catch (reason) {
+      if (mounted.current) setStartError(connectionErrorMessage(reason));
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
-    void plannerSession
-      .start({ timeoutMs: 20_000 })
-      .then(requireOutcome)
-      .then(async () => {
-        if (
-          active &&
-          !handledCallback.current &&
-          isAuthorizationCallback(location.href)
-        ) {
-          handledCallback.current = true;
-          requireOutcome(
-            await plannerSession.handleAuthorizationCallback(location.href, {
-              timeoutMs: 60_000,
-            }),
-          );
-        }
-      })
-      .catch(
-        (reason: unknown) => active && setError(connectionErrorMessage(reason)),
-      );
+    mounted.current = true;
+    const status = plannerSession.getSnapshot().status;
+    if (status !== "start_failed" && status !== "destroyed") {
+      queueMicrotask(() => {
+        if (active) void startSession();
+      });
+    }
     return () => {
       active = false;
+      mounted.current = false;
     };
-  }, []);
+  }, [startSession]);
 
   const connection =
     snapshot.status === "ready" ? plannerSession.connection() : null;
@@ -106,23 +110,59 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
     }
   }, []);
 
+  const selectCollection = useCallback((collectionId: string) => {
+    setError("");
+    try {
+      requireOutcome(
+        plannerSession.select(collectionId, { history: "replace" }),
+      );
+    } catch (reason) {
+      setError(connectionErrorMessage(reason));
+    }
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    requireOutcome(plannerSession.clearSelection());
+  }, []);
+
   if (repository)
     return (
-      <Planner
-        repository={repository}
-        onChangeCollection={() => plannerSession.clearSelection()}
-      />
+      <Planner repository={repository} onChangeCollection={clearSelection} />
     );
 
   const stateError =
-    snapshot.status === "blocked"
+    startError ||
+    (snapshot.status === "start_failed"
       ? snapshot.problem.message
-      : snapshot.status === "unavailable"
-        ? unavailableMessage(snapshot.reason)
-        : "";
+      : snapshot.status === "destroyed"
+        ? "This collection session has closed. Reload Planner to reconnect."
+        : snapshot.status === "blocked"
+          ? snapshot.problem.message
+          : snapshot.status === "unavailable"
+            ? unavailableMessage(snapshot.reason)
+            : "");
+
+  const retryStartup =
+    snapshot.status === "start_failed" ||
+    (snapshot.status === "not_started" && Boolean(startError));
 
   const isWaiting =
-    snapshot.status === "opening" || snapshot.status === "checking_setup";
+    snapshot.status === "not_started" ||
+    snapshot.status === "starting" ||
+    snapshot.status === "checking_setup";
+  const selectedCollectionId =
+    "collectionId" in snapshot ? snapshot.collectionId : null;
+  const sessionStarted = ![
+    "not_started",
+    "starting",
+    "start_failed",
+    "destroyed",
+  ].includes(snapshot.status);
+  const alternativeConnections = sessionStarted
+    ? snapshot.connections.filter(
+        ({ collectionId }) => collectionId !== selectedCollectionId,
+      )
+    : [];
 
   return (
     <main
@@ -151,7 +191,18 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
           </>
         )}
         <div className="welcome-actions">
-          {snapshot.status === "setup_review_required" ? (
+          {retryStartup ? (
+            <button
+              className="primary-action"
+              disabled={opening}
+              type="button"
+              onClick={() => void startSession()}
+            >
+              <Database aria-hidden="true" size={18} />
+              Retry opening Planner
+            </button>
+          ) : snapshot.status === "destroyed" ? null : snapshot.status ===
+            "setup_review_required" ? (
             <button
               className="primary-action"
               disabled={opening || !snapshot.update.canApply}
@@ -165,7 +216,8 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
               )}
               {opening ? "Applying setup…" : "Apply setup and open"}
             </button>
-          ) : snapshot.status === "authorization_required" ? (
+          ) : snapshot.status === "authorization_required" ||
+            snapshot.status === "unavailable" ? (
             <button
               className="primary-action"
               disabled={opening}
@@ -177,7 +229,7 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
               ) : (
                 <Database aria-hidden="true" size={18} />
               )}
-              {opening ? "Opening…" : "Review access"}
+              {opening ? "Opening…" : "Review updated access"}
             </button>
           ) : (
             <button
@@ -195,7 +247,8 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
                 ? "Opening…"
                 : snapshot.status === "checking_setup"
                   ? "Checking setup…"
-                  : snapshot.status === "opening"
+                  : snapshot.status === "not_started" ||
+                      snapshot.status === "starting"
                     ? "Loading…"
                     : "Open collection"}
             </button>
@@ -213,6 +266,17 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
               Choose another collection
             </button>
           ) : null}
+          {alternativeConnections.map((connection) => (
+            <button
+              className="text-action"
+              disabled={opening || isWaiting}
+              key={connection.collectionId}
+              type="button"
+              onClick={() => selectCollection(connection.collectionId)}
+            >
+              Open {connection.displayName}
+            </button>
+          ))}
         </div>
         {error || stateError ? (
           <p className="error-notice" role="alert">

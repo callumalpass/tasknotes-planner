@@ -89,6 +89,12 @@ export interface TaskPropertyUpdate {
   projects?: string[];
 }
 
+export interface PendingPlannerMutation {
+  requestId: string;
+  operation: string;
+  createdAt: string;
+}
+
 export interface PlannerRepository {
   load(viewKey?: string): Promise<PlannerCollection>;
   updateSchedule(
@@ -105,5 +111,7 @@ export interface PlannerRepository {
   ): Promise<PlannerTask>;
   toggleCompletion(task: PlannerTask): Promise<PlannerTask>;
   saveView(input: SavePlannerViewInput): Promise<PlannerView>;
+  pendingMutations?(): readonly PendingPlannerMutation[];
+  recoverPendingMutation?(requestId: string): Promise<void>;
   watch?(listener: () => void): Promise<() => void>;
 }
