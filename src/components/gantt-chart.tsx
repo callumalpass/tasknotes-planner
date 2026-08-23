@@ -36,7 +36,7 @@ import {
   type GanttRow,
   type TimelineZoom,
 } from "../domain/gantt";
-import { errorMessage } from "../data/outcome";
+import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
 
 import type {
   PlannerTask,
@@ -87,6 +87,7 @@ export function GanttChart({
   zoom,
   selectedId,
   todayRequest,
+  mutationsDisabled = false,
   onSelect,
   onZoom,
   onScheduleChange,
@@ -98,6 +99,7 @@ export function GanttChart({
   zoom: TimelineZoom;
   selectedId: string | null;
   todayRequest: number;
+  mutationsDisabled?: boolean;
   onSelect(task: PlannerTask): void;
   onZoom(direction: -1 | 1): void;
   onScheduleChange(task: PlannerTask, update: ScheduleUpdate): Promise<void>;
@@ -228,6 +230,7 @@ export function GanttChart({
   }
 
   async function commitSchedule(task: PlannerTask, update: ScheduleUpdate) {
+    if (mutationsDisabled) return;
     showMessage({ tone: "neutral", text: "Saving schedule…" }, 10_000);
     try {
       await onScheduleChange(task, update);
@@ -236,7 +239,9 @@ export function GanttChart({
       showMessage(
         {
           tone: "danger",
-          text: `Schedule not saved. ${errorMessage(reason)}`,
+          text: isOperationOutcomeUnknown(reason)
+            ? `Schedule outcome is unknown. ${errorMessage(reason)}`
+            : `Schedule not saved. ${errorMessage(reason)}`,
         },
         5_000,
       );
@@ -247,6 +252,7 @@ export function GanttChart({
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
   ) {
+    if (mutationsDisabled) return;
     showMessage({ tone: "neutral", text: "Saving relationship…" }, 10_000);
     try {
       await onDependenciesChange(task, dependencies);
@@ -255,7 +261,9 @@ export function GanttChart({
       showMessage(
         {
           tone: "danger",
-          text: `Relationship not saved. ${errorMessage(reason)}`,
+          text: isOperationOutcomeUnknown(reason)
+            ? `Relationship outcome is unknown. ${errorMessage(reason)}`
+            : `Relationship not saved. ${errorMessage(reason)}`,
         },
         5_000,
       );
@@ -263,6 +271,7 @@ export function GanttChart({
   }
 
   async function commitCompletion(task: PlannerTask) {
+    if (mutationsDisabled) return;
     if (task.recurrence) {
       showMessage(
         {
@@ -291,7 +300,9 @@ export function GanttChart({
       showMessage(
         {
           tone: "danger",
-          text: `Task not changed. ${errorMessage(reason)}`,
+          text: isOperationOutcomeUnknown(reason)
+            ? `Task outcome is unknown. ${errorMessage(reason)}`
+            : `Task not changed. ${errorMessage(reason)}`,
         },
         5_000,
       );
@@ -595,6 +606,7 @@ export function GanttChart({
                 <TaskRow
                   key={row.id}
                   linkDrag={linkDrag}
+                  mutationsDisabled={mutationsDisabled}
                   preview={
                     schedulePreview?.taskId === row.task.id
                       ? schedulePreview.update
@@ -801,6 +813,7 @@ function TaskRow({
   completionPending,
   preview,
   linkDrag,
+  mutationsDisabled,
   suppressClickRef,
   onSelect,
   onCompletionChange,
@@ -821,6 +834,7 @@ function TaskRow({
   completionPending: boolean;
   preview?: ScheduleUpdate;
   linkDrag: LinkDrag | null;
+  mutationsDisabled: boolean;
   suppressClickRef: MutableRefObject<boolean>;
   onSelect(task: PlannerTask): void;
   onCompletionChange(task: PlannerTask): void;
@@ -872,6 +886,7 @@ function TaskRow({
     event: ReactKeyboardEvent,
     kind: Exclude<ScheduleDragKind, "place">,
   ) {
+    if (mutationsDisabled) return;
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     if (kind === "move" && !event.altKey) return;
     event.preventDefault();
@@ -893,7 +908,7 @@ function TaskRow({
               : `${row.task.completed ? "Reopen" : "Complete"} ${row.task.title}`
           }
           className="completion-control"
-          disabled={completionPending}
+          disabled={completionPending || mutationsDisabled}
           title={
             row.task.recurrence
               ? "Complete recurring tasks in TaskNotes, where you can choose an occurrence."
@@ -945,17 +960,29 @@ function TaskRow({
             }
           >
             <button
-              aria-label={`${row.task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${scale.intraday && taskHasTime(task) ? (scale.snapMinutes === 15 ? "15 minutes" : "one hour") : "one day"}.`}
+              aria-label={
+                mutationsDisabled
+                  ? `${row.task.title}, ${scheduleLabel(task)}. Select to review.`
+                  : `${row.task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${scale.intraday && taskHasTime(task) ? (scale.snapMinutes === 15 ? "15 minutes" : "one hour") : "one day"}.`
+              }
               className="task-bar-main"
               type="button"
               onClick={select}
-              onKeyDown={(event) => keyboardMove(event, "move")}
-              onPointerCancel={onCancelScheduleDrag}
-              onPointerDown={(event) =>
-                onBeginScheduleDrag(event, row.task, "move")
+              onKeyDown={
+                mutationsDisabled
+                  ? undefined
+                  : (event) => keyboardMove(event, "move")
               }
-              onPointerMove={onMoveScheduleDrag}
-              onPointerUp={onEndScheduleDrag}
+              onPointerCancel={
+                mutationsDisabled ? undefined : onCancelScheduleDrag
+              }
+              onPointerDown={
+                mutationsDisabled
+                  ? undefined
+                  : (event) => onBeginScheduleDrag(event, row.task, "move")
+              }
+              onPointerMove={mutationsDisabled ? undefined : onMoveScheduleDrag}
+              onPointerUp={mutationsDisabled ? undefined : onEndScheduleDrag}
             >
               {!span.milestone && width > 80 ? (
                 <span>{row.task.title}</span>
@@ -966,6 +993,7 @@ function TaskRow({
                 <button
                   aria-label={`Change ${row.task.title} scheduled date`}
                   className="resize-grip is-start"
+                  disabled={mutationsDisabled}
                   type="button"
                   onKeyDown={(event) => keyboardMove(event, "resize-start")}
                   onPointerCancel={onCancelScheduleDrag}
@@ -978,6 +1006,7 @@ function TaskRow({
                 <button
                   aria-label={`Change ${row.task.title} due date`}
                   className="resize-grip is-finish"
+                  disabled={mutationsDisabled}
                   type="button"
                   onKeyDown={(event) => keyboardMove(event, "resize-finish")}
                   onPointerCancel={onCancelScheduleDrag}
@@ -993,6 +1022,7 @@ function TaskRow({
               <LinkPort
                 edge="start"
                 linkDrag={linkDrag}
+                mutationsDisabled={mutationsDisabled}
                 task={row.task}
                 onBegin={onBeginLink}
                 onCancel={onCancelLink}
@@ -1003,6 +1033,7 @@ function TaskRow({
             <LinkPort
               edge="finish"
               linkDrag={linkDrag}
+              mutationsDisabled={mutationsDisabled}
               task={row.task}
               onBegin={onBeginLink}
               onCancel={onCancelLink}
@@ -1016,15 +1047,23 @@ function TaskRow({
               className={`unscheduled-row-action${preview ? " is-preview" : ""}`}
               type="button"
               onClick={select}
-              onPointerCancel={onCancelScheduleDrag}
-              onPointerDown={(event) =>
-                onBeginScheduleDrag(event, row.task, "place")
+              onPointerCancel={
+                mutationsDisabled ? undefined : onCancelScheduleDrag
               }
-              onPointerMove={onMoveScheduleDrag}
-              onPointerUp={onEndScheduleDrag}
+              onPointerDown={
+                mutationsDisabled
+                  ? undefined
+                  : (event) => onBeginScheduleDrag(event, row.task, "place")
+              }
+              onPointerMove={mutationsDisabled ? undefined : onMoveScheduleDrag}
+              onPointerUp={mutationsDisabled ? undefined : onEndScheduleDrag}
             >
               <Minus aria-hidden="true" size={14} />
-              {preview ? "Drop to schedule" : "Drag to schedule"}
+              {mutationsDisabled
+                ? "Select to review"
+                : preview
+                  ? "Drop to schedule"
+                  : "Drag to schedule"}
             </button>
             {span ? (
               <div
@@ -1044,6 +1083,7 @@ function LinkPort({
   task,
   edge,
   linkDrag,
+  mutationsDisabled,
   onBegin,
   onMove,
   onEnd,
@@ -1052,6 +1092,7 @@ function LinkPort({
   task: PlannerTask;
   edge: "start" | "finish";
   linkDrag: LinkDrag | null;
+  mutationsDisabled: boolean;
   onBegin(
     event: ReactPointerEvent<HTMLButtonElement>,
     task: PlannerTask,
@@ -1069,6 +1110,7 @@ function LinkPort({
       className={`link-port is-${edge}${targeted ? " is-targeted" : ""}${targeted && linkDrag?.invalidReason ? " is-invalid" : ""}`}
       data-edge={edge}
       data-task-id={task.id}
+      disabled={mutationsDisabled}
       type="button"
       onPointerCancel={onCancel}
       onPointerDown={(event) => onBegin(event, task, edge)}

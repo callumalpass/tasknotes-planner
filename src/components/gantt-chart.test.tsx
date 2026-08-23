@@ -31,6 +31,59 @@ beforeEach(() => {
 });
 
 describe("GanttChart interactions", () => {
+  it("gates timeline writes while keeping task selection available", async () => {
+    const task = makeTask({
+      id: "blocked",
+      title: "Blocked task",
+      scheduled: "2026-08-17",
+      due: "2026-08-18",
+    });
+    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
+    const onDependenciesChange = vi.fn().mockResolvedValue(undefined);
+    const onCompletionChange = vi.fn().mockResolvedValue(undefined);
+    const onSelect = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        mutationsDisabled
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onDependenciesChange={onDependenciesChange}
+        onCompletionChange={onCompletionChange}
+        onScheduleChange={onScheduleChange}
+        onSelect={onSelect}
+        onZoom={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Complete Blocked task" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Change Blocked task scheduled date",
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Finish relationship handle for Blocked task",
+      }),
+    ).toBeDisabled();
+
+    fireEvent.click(document.querySelector(".task-ledger-main")!);
+    fireEvent.keyDown(document.querySelector(".task-bar-main")!, {
+      altKey: true,
+      key: "ArrowRight",
+    });
+
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
+    expect(onDependenciesChange).not.toHaveBeenCalled();
+    expect(onCompletionChange).not.toHaveBeenCalled();
+  });
+
   it("uses Ctrl+wheel for chart zoom without allowing Chrome page zoom", () => {
     const task = makeTask({
       id: "zoomable",

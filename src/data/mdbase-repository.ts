@@ -30,6 +30,7 @@ import { requireOutcome } from "./outcome";
 
 import type {
   PlannerCollection,
+  PendingPlannerMutation,
   PlannerPriorityOption,
   PlannerRepository,
   PlannerStatusOption,
@@ -270,6 +271,20 @@ export class MdbasePlannerRepository implements PlannerRepository {
       true,
       document.views[0],
     );
+  }
+
+  pendingMutations(): readonly PendingPlannerMutation[] {
+    return this.connection.pendingMutations().map((pending) => ({
+      requestId: pending.requestId,
+      operation: String(pending.operation),
+      createdAt: pending.createdAt,
+    }));
+  }
+
+  async recoverPendingMutation(requestId: string): Promise<void> {
+    const pending = this.connection.pendingMutation(requestId);
+    if (!pending) return;
+    requireOutcome(await pending.recover({ timeoutMs: 30_000 }));
   }
 
   private async updateTask(
