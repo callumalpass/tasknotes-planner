@@ -69,7 +69,9 @@ pnpm dev
 ```
 
 Open [http://127.0.0.1:4174/?demo=1](http://127.0.0.1:4174/?demo=1) for the
-sample plan, or remove `?demo=1` to connect an mdbase collection.
+sample plan, or remove `?demo=1` to connect an mdbase collection. Use
+`127.0.0.1`, not the `localhost` alias: the manifest and callback share this
+single development origin.
 
 Useful checks:
 
@@ -108,8 +110,9 @@ local callback URLs are never deployed.
 
 The application requests full-collection authorization because mdbase saved
 views are collection-level resources. Task records are still selected and
-mutated only through `tasknotes.task`. Planner requests only the capabilities
-it uses:
+mutated only through `tasknotes.task`. Planner declares capability contract v2
+with required atomic groups `collection.read`, `records.edit`, `views.manage`,
+and `definitions.manage` for these workflows:
 
 - inspect the collection contract
 - apply the shared TaskNotes type pack and declared Base-source include setting
@@ -119,6 +122,14 @@ it uses:
 - update TaskNotes records
 - list and execute saved views
 - read, create, and update saved-view sources
+
+Atomic consent also grants record validation/rename, type reading/creation, and
+saved-view source deletion. Saved-view deletion is not record deletion, and no
+independent operation permission is requested. Record creation/deletion, files,
+offline replicas, and background scheduling remain excluded. See
+[the migration guard and rollout order](docs/capability-v2-migration.md): the
+vendored beta96 v2 candidate SDK is source-bound development evidence, not a published or
+signed release. This v2 draft must not deploy before the qualified v2 writer.
 
 The production declaration assumes `https://planner.tasknotes.dev/`. Update the
 homepage, icon, and redirect URI together if the deployment origin changes.

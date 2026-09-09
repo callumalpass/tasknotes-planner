@@ -27,10 +27,9 @@ describe("MdbasePlannerRepository", () => {
         effectiveFrontmatter: {
           id: "plan",
           title: "Plan launch",
-          status: input.patch.status,
+          status: "open",
           priority: "normal",
-          projects: input.patch.projects,
-          completedDate: input.patch.completedDate,
+          ...input.patch,
         },
       }),
     );
@@ -144,6 +143,11 @@ describe("MdbasePlannerRepository", () => {
     const repository = new MdbasePlannerRepository(connection);
 
     const collection = await repository.load();
+    const contract = { id: "tasknotes.task", version: "0.3.0-rc.3" };
+    expect(connection.queryAll).toHaveBeenCalledWith(
+      expect.objectContaining({ contract }),
+      { firstPageSize: 500, pageSize: 1_000 },
+    );
     expect(collection.statuses).toMatchObject([
       { value: "open", label: "Open", isCompleted: false },
       { value: "done", label: "Done", isCompleted: true },
@@ -167,6 +171,20 @@ describe("MdbasePlannerRepository", () => {
         patch: expect.objectContaining({ projects: ["[[Launch]]"] }),
       }),
     );
+    const schedule = { scheduled: "2026-09-09", due: "2026-09-12" };
+    expect(
+      await repository.updateSchedule(collection.tasks[0], schedule),
+    ).toMatchObject(schedule);
+    expect(connection.read).toHaveBeenLastCalledWith({
+      path: "tasks/plan.md",
+      contract: { ...contract, type: "task" },
+    });
+    expect(update).toHaveBeenLastCalledWith({
+      path: "tasks/plan.md",
+      contract: { ...contract, type: "task" },
+      ifRevision: "task-1",
+      patch: schedule,
+    });
     await repository.saveView({
       name: "High work",
       status: "open",
@@ -194,6 +212,65 @@ describe("MdbasePlannerRepository", () => {
     expect(JSON.stringify(document.views[0].filters)).toContain(
       'note[\\"status\\"] == \\"open\\"',
     );
+  });
+
+  it("updates a saved Base with its revision and preserves other views and options", async () => {
+    const path = "TaskNotes/Views/work.base";
+    const readViewSource = vi.fn(async () =>
+      success({
+        path,
+        revision: "view-3",
+        document: JSON.stringify({
+          formulas: { effort: "1 + 1" },
+          views: [
+            { type: "table", name: "Other" },
+            {
+              type: "tasknotesPlanner",
+              name: "Work",
+              options: { custom: "preserved", zoom: 2 },
+            },
+          ],
+        }),
+      }),
+    );
+    const updateViewSource = vi.fn(async (input: { document: string }) =>
+      success({ path, format: "obsidian.base", revision: "view-4", ...input }),
+    );
+    const createViewSource = vi.fn();
+    const repository = new MdbasePlannerRepository({
+      readViewSource,
+      updateViewSource,
+      createViewSource,
+    } as unknown as MdbaseConnection<JsonObject>);
+    const saved = await repository.saveView({
+      name: "Work",
+      zoom: 4,
+      view: {
+        key: `${path}#work`,
+        path,
+        id: "work",
+        name: "Work",
+        format: "obsidian.base",
+        revision: "view-1",
+        writable: true,
+        options: {},
+      },
+    });
+    expect(readViewSource).toHaveBeenCalledWith({ path });
+    expect(updateViewSource).toHaveBeenCalledWith({
+      path,
+      ifRevision: "view-3",
+      document: expect.any(String),
+    });
+    expect(parse(updateViewSource.mock.calls[0][0].document)).toMatchObject({
+      formulas: { effort: "1 + 1" },
+      views: [
+        { type: "table", name: "Other" },
+        { type: "tasknotesPlanner", options: { custom: "preserved", zoom: 4 } },
+      ],
+    });
+    expect(saved.revision).toBe("view-4");
+    expect(createViewSource).not.toHaveBeenCalled();
   });
 
   it("recovers the persisted mutation handle without replaying a write", async () => {

@@ -1,35 +1,26 @@
+import { parseAppManifest } from "@mdbase-dev/connect-protocol/manifest";
+
 import { loadCanonicalTaskNotesTypePack } from "./canonical-task-pack.mjs";
 
 export { TASKNOTES_TYPE_PACK_VERSION } from "./canonical-task-pack.mjs";
 
 export const requiredCapabilities = Object.freeze([
-  "collection.inspect",
-  "collection.setup.apply",
-  "definitions.update",
-  "definitions.type-pack.apply",
-  "records.watch",
-  "records.read",
-  "records.query",
-  "records.update",
-  "views.list",
-  "views.execute",
-  "views.source.read",
-  "views.source.create",
-  "views.source.update",
+  "collection.read",
+  "records.edit",
+  "views.manage",
+  "definitions.manage",
 ]);
 
 export async function buildPlannerManifest({ appUrl, development = false }) {
   const origin = appUrl.replace(/\/$/, "");
   const redirectUris = [`${origin}/auth/mdbase/callback`];
-  if (development && origin === "http://127.0.0.1:4174")
-    redirectUris.push("http://localhost:4174/auth/mdbase/callback");
   const typePack = await loadCanonicalTaskNotesTypePack();
   const taskContract = typePack.provides.find(
     (contract) => contract.id === "tasknotes.task",
   );
   if (!taskContract)
     throw new Error("TaskNotes pack provides no task contract.");
-  return {
+  const manifest = {
     manifest_version: 1,
     id: "dev.tasknotes.planner",
     name: "TaskNotes Planner",
@@ -39,7 +30,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
     requirements: {
       contracts: [taskContract],
       capabilities: {
-        contract_version: 1,
+        contract_version: 2,
         required: [...requiredCapabilities],
       },
       access: "full_collection",
@@ -64,4 +55,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
       ],
     },
   };
+  // Validate with the installed protocol, without translating v2 to v1.
+  parseAppManifest(manifest, { allowLocal: development });
+  return manifest;
 }

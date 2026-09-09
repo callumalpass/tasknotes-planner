@@ -14,21 +14,12 @@
       }
     ],
     "capabilities": {
-      "contract_version": 1,
+      "contract_version": 2,
       "required": [
-        "collection.inspect",
-        "collection.setup.apply",
-        "definitions.update",
-        "definitions.type-pack.apply",
-        "records.watch",
-        "records.read",
-        "records.query",
-        "records.update",
-        "views.list",
-        "views.execute",
-        "views.source.read",
-        "views.source.create",
-        "views.source.update"
+        "collection.read",
+        "records.edit",
+        "views.manage",
+        "definitions.manage"
       ]
     },
     "access": "full_collection",

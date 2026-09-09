@@ -11,9 +11,17 @@ const serverUrl =
   import.meta.env.VITE_MDBASE_CONNECT_URL ?? "https://connect.mdbase.dev";
 const loopbackUrl =
   import.meta.env.VITE_MDBASE_CONNECT_LOOPBACK_URL ?? "http://127.0.0.1:28485";
-const redirectUri = `${location.origin}${joinBase("auth/mdbase/callback")}`;
+// The callback must share the manifest origin (including in development).
+const redirectUri = manifest.redirect_uris[0];
 
-const connect = new MdbaseConnect<JsonObject>({
+export function assertPlannerOrigin(value = location.href): void {
+  if (new URL(value).origin !== new URL(manifest.homepage).origin)
+    throw new Error(
+      `Open Planner at ${manifest.homepage} to connect a collection.`,
+    );
+}
+
+export const connect = new MdbaseConnect<JsonObject>({
   serverUrl,
   loopbackUrl,
   manifest: manifest as MdbaseAppManifest,

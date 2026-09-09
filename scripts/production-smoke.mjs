@@ -1,3 +1,5 @@
+import { requiredCapabilities } from "./planner-manifest.mjs";
+
 const connectOrigin =
   process.env.MDBASE_CONNECT_ORIGIN ?? "https://connect.mdbase.dev";
 const appOrigin =
@@ -28,7 +30,10 @@ const checks = [
       manifest.redirect_uris?.length !== 1 ||
       manifest.redirect_uris[0] !== `${appOrigin}/auth/mdbase/callback` ||
       manifest.requirements?.access !== "full_collection" ||
-      !manifest.requirements?.capabilities?.required?.includes("views.execute")
+      manifest.requirements?.capabilities?.contract_version !== 2 ||
+      JSON.stringify(manifest.requirements?.capabilities?.required) !==
+        JSON.stringify(requiredCapabilities) ||
+      (manifest.requirements?.capabilities?.optional?.length ?? 0) !== 0
     )
       throw new Error("The deployed Planner mdbase manifest is invalid.");
     if (!validateWithConnect) return;

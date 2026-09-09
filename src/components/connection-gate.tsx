@@ -15,7 +15,11 @@ import type {
 } from "react";
 import type { MdbaseApplicationSessionSnapshot } from "@mdbase-dev/connect";
 
-import { isAuthorizationCallback, plannerSession } from "../data/connect";
+import {
+  assertPlannerOrigin,
+  isAuthorizationCallback,
+  plannerSession,
+} from "../data/connect";
 import { MdbasePlannerRepository } from "../data/mdbase-repository";
 import { errorMessage, requireOutcome } from "../data/outcome";
 import { Planner } from "./planner";
@@ -37,6 +41,7 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
   const startSession = useCallback(async () => {
     setStartError("");
     try {
+      assertPlannerOrigin();
       const timeoutMs = isAuthorizationCallback(location.href)
         ? CALLBACK_START_TIMEOUT_MS
         : START_TIMEOUT_MS;
@@ -278,6 +283,13 @@ export function ConnectionGate({ onDemo }: { onDemo(): void }) {
             </button>
           ))}
         </div>
+        {snapshot.status === "authorization_required" ? (
+          <p>
+            Planner needs updated access. Review and approve the new permission
+            groups to continue; your previous grant will not be upgraded
+            automatically.
+          </p>
+        ) : null}
         {error || stateError ? (
           <p className="error-notice" role="alert">
             {error || stateError}

@@ -55,6 +55,7 @@ const connectMock = vi.hoisted(() => {
 });
 
 vi.mock("../data/connect", () => ({
+  assertPlannerOrigin: vi.fn(),
   isAuthorizationCallback: connectMock.isAuthorizationCallback,
   plannerSession: connectMock.session,
 }));
@@ -159,6 +160,10 @@ describe("ConnectionGate lifecycle", () => {
     const { ConnectionGate } = await import("./connection-gate");
     render(<ConnectionGate onDemo={vi.fn()} />);
 
+    await screen.findByText(
+      /previous grant will not be upgraded automatically/,
+    );
+    expect(connectMock.session.authorize).not.toHaveBeenCalled();
     fireEvent.click(
       await screen.findByRole("button", { name: "Review updated access" }),
     );
@@ -168,6 +173,25 @@ describe("ConnectionGate lifecycle", () => {
         timeoutMs: 60_000,
       }),
     );
+  });
+
+  it("shows denied consent without falling back or applying setup", async () => {
+    connectMock.setSnapshot(authorizationRequiredSnapshot());
+    connectMock.session.authorize.mockResolvedValue({
+      ok: false,
+      problem: { code: "access_denied", message: "Authorization denied." },
+      diagnostics: [],
+    });
+    const { ConnectionGate } = await import("./connection-gate");
+    render(<ConnectionGate onDemo={vi.fn()} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review updated access" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Authorization denied.",
+    );
+    expect(connectMock.session.authorize).toHaveBeenCalledTimes(1);
+    expect(connectMock.session.applyCollectionSetup).not.toHaveBeenCalled();
   });
 
   it("omits the selected unusable collection from alternatives", async () => {
