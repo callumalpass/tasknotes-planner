@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,12 +18,13 @@ describe("Planner mdbase manifest", () => {
     expect(manifest.requirements).toMatchObject({
       access: "full_collection",
       capabilities: {
-        required: expect.arrayContaining([
-          "collection.setup.apply",
-          "definitions.update",
-          "definitions.type-pack.apply",
-          "views.execute",
-        ]),
+        contract_version: 2,
+        required: [
+          "collection.read",
+          "records.edit",
+          "views.manage",
+          "definitions.manage",
+        ],
       },
     });
     expect(manifest.provisions.type_packs).toHaveLength(1);
@@ -56,14 +58,36 @@ describe("Planner mdbase manifest", () => {
     ]);
   });
 
-  it("adds both supported loopback callbacks only for development", async () => {
+  it("publishes exactly the generated production declaration", async () => {
+    const manifest = await buildPlannerManifest({
+      appUrl: "https://planner.tasknotes.dev",
+    });
+    expect(manifest.requirements.capabilities).toEqual({
+      contract_version: 2,
+      required: [
+        "collection.read",
+        "records.edit",
+        "views.manage",
+        "definitions.manage",
+      ],
+    });
+    for (const path of [
+      "../public/.well-known/mdbase-app.json",
+      "../src/generated-mdbase-app.json",
+    ]) {
+      expect(
+        JSON.parse(await readFile(new URL(path, import.meta.url), "utf8")),
+      ).toEqual(manifest);
+    }
+  });
+
+  it("uses only the documented development origin for callbacks", async () => {
     const manifest = await buildPlannerManifest({
       appUrl: "http://127.0.0.1:4174",
       development: true,
     });
     expect(manifest.redirect_uris).toEqual([
       "http://127.0.0.1:4174/auth/mdbase/callback",
-      "http://localhost:4174/auth/mdbase/callback",
     ]);
   });
 });
