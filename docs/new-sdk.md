@@ -98,8 +98,17 @@ Pass its binding and an `onSignedOut` callback through `ConnectionGate`'s option
 `nativeSignIn` prop. The owner closes the borrowed SDK session on teardown and
 creates a fresh SDK instance only after confirmed close or explicit sign-in.
 
-The UI reserves the mdbase tab synchronously before SDK start/expiry renewal,
-then delegates authorization and approval detection to the SDK. It renders actual
+The UI reserves a named 620×760 Connect popup synchronously before SDK
+start/expiry renewal, using the same app-owned pattern as TaskNotes. The trusted
+Connect popup keeps its opener for parent-owned cross-origin closure; the tab
+fallback detaches its opener before navigation (noopener semantics). No secrets,
+postMessage approval callback or storage callback use the opener. The SDK
+supplies the validated navigation URI and detects approval. The UI retains its
+original handle after handoff and closes it on completed or terminal public SDK
+statuses, never while authorizing additional consent, even if already paired.
+Only the owned popup is cleaned up on view teardown, not the borrowed session.
+A detached fallback tab is not claimed parent-closeable after crossing origins.
+It renders actual
 SDK status/email, tab reopening, blocked-popup and interrupted states. Local
 **Sign out** waits for SDK `close()`; it neither revokes membership nor erases
 protected sign-in stores. **Forget collection** calls the SDK's selected-ID

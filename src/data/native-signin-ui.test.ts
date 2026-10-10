@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppWebSignInSnapshot } from "@mdbase-dev/sdk/app-host";
 import {
   openSignInPortal,
+  createSignInPortalUi,
   SignInTabBlocked,
   signInCopy,
   signInPresentation,
@@ -131,19 +132,93 @@ describe("native sign-in presentation, not an authentication engine", () => {
     expect(view.message).toBe("Your browser blocked the sign-in tab.");
     expect(view.action).toBe("Open sign-in");
   });
-  it("opens a tab in the UI gesture, detaches the opener, and delegates only navigation", () => {
-    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
-    vi.stubGlobal("window", { open: vi.fn(() => tab) });
+  it("opens the production popup synchronously, keeps its opener and navigates the original handle", () => {
+    const opener = {};
+    const popup = {
+      opener,
+      closed: false,
+      location: { href: "" },
+      close: vi.fn(),
+    };
+    vi.stubGlobal("window", { open: vi.fn(() => popup) });
+    try {
+      const portal = openSignInPortal("planner-owned");
+      expect(window.open).toHaveBeenCalledWith(
+        "",
+        "planner-owned",
+        "popup,width=620,height=760",
+      );
+      expect(popup.opener).toBe(opener);
+      portal.navigate("https://mdbase.test/approve");
+      expect(popup.location.href).toBe("https://mdbase.test/approve");
+      portal.close();
+      portal.close();
+      expect(popup.close).toHaveBeenCalledOnce();
+      expect(() => portal.navigate("https://mdbase.test/late")).toThrow(
+        "Sign-in window closed.",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("falls back to a tab with noopener semantics when popup opening fails", () => {
+    const tab = {
+      opener: {},
+      closed: false,
+      location: { href: "" },
+      close: vi.fn(),
+    };
+    vi.stubGlobal("window", {
+      open: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("popup blocked");
+        })
+        .mockReturnValue(tab),
+    });
     try {
       const portal = openSignInPortal();
-      expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
+      expect(window.open).toHaveBeenLastCalledWith("", "_blank");
       expect(tab.opener).toBeNull();
       portal.navigate("https://mdbase.test/approve");
-      expect(tab.location.replace).toHaveBeenCalledWith(
-        "https://mdbase.test/approve",
-      );
-      portal.close();
-      expect(tab.close).toHaveBeenCalledOnce();
+      expect(tab.location.href).toBe("https://mdbase.test/approve");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("retains ownership after SDK handoff, reuses reopen and disposes only its original handle", () => {
+    const popup = { closed: false, location: { href: "" }, close: vi.fn() };
+    vi.stubGlobal("window", { open: vi.fn(() => popup) });
+    try {
+      const ui = createSignInPortalUi();
+      ui.reserve();
+      const original = ui.open();
+      ui.reserve();
+      expect(ui.open()).toBe(original);
+      expect(window.open).toHaveBeenCalledOnce();
+      ui.cancel();
+      ui.cancel();
+      expect(popup.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("reopens a manually closed popup and isolates different UI owners' names", () => {
+    const first = { closed: false, location: { href: "" }, close: vi.fn() };
+    const second = { closed: false, location: { href: "" }, close: vi.fn() };
+    const open = vi.fn().mockReturnValueOnce(first).mockReturnValue(second);
+    vi.stubGlobal("window", { open });
+    try {
+      const ui = createSignInPortalUi();
+      ui.reserve();
+      const original = ui.open();
+      first.closed = true;
+      ui.reserve();
+      expect(ui.open()).not.toBe(original);
+      const other = createSignInPortalUi();
+      other.reserve();
+      expect(open.mock.calls[0]?.[1]).toBe(open.mock.calls[1]?.[1]);
+      expect(open.mock.calls[2]?.[1]).not.toBe(open.mock.calls[0]?.[1]);
     } finally {
       vi.unstubAllGlobals();
     }

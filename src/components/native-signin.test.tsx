@@ -102,6 +102,35 @@ describe("public SDK sign-in UI bindings (stand-ins, not native acceptance)", ()
     await waitFor(() => expect(h.result.portal.cancel).toHaveBeenCalledOnce());
     expect(h.result.session.authorize).not.toHaveBeenCalled();
   });
+  it.each([
+    "unselected",
+    "opening",
+    "setup_required",
+    "ready",
+    "blocked",
+    "closed",
+  ] as const)(
+    "cleans up the owned portal when the SDK reaches %s",
+    async (status) => {
+      const h = binding({ status: "authorizing", signIn: paired });
+      const view = render(
+        <NativeSignIn binding={h.result} onSignedOut={vi.fn()} />,
+      );
+      await act(async () => h.publish({ status }));
+      expect(h.result.portal.cancel).toHaveBeenCalledOnce();
+      view.unmount();
+      expect(h.result.session.close).not.toHaveBeenCalled();
+    },
+  );
+  it("closes its popup on retired-view cleanup without closing the borrowed SDK session", () => {
+    const h = binding({ status: "authorizing", signIn: paired });
+    const view = render(
+      <NativeSignIn binding={h.result} onSignedOut={vi.fn()} />,
+    );
+    view.unmount();
+    expect(h.result.portal.cancel).toHaveBeenCalledOnce();
+    expect(h.result.session.close).not.toHaveBeenCalled();
+  });
   it("auto-detects the SDK's approval publication without an app polling action", async () => {
     const h = binding({ status: "authorizing" });
     render(<NativeSignIn binding={h.result} onSignedOut={vi.fn()} />);
