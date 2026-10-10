@@ -73,9 +73,11 @@ are available and tested.
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
-The pin is the release-qualified successor at `9ab0f31d`, including SDK816's explicit environment
-selection, SDK808's
-session fix, SDK809 leases, SDK811's fixture fix and SDK814's shared read helpers.
+The pin is the release-qualified successor at `729b5391`, including the actual
+SDK819 shared native collection factory and SDK827 provider-receipt helpers, plus
+the earlier session, lease, fixture, read-helper and environment fixes. Release
+qualified all 275 archive members, 1650 SDK tests and five browser-bundle checks
+(with three existing WASM-gated skips); the original archive bytes are vendored.
 This pin-only update does not change Planner's existing read/write implementation.
 Archive SHA256/SHA512 were verified. This is source/package qualification, not
 per-app trust/origin/runtime/session/operation acceptance or a published release.
@@ -117,8 +119,8 @@ protected sign-in stores. **Forget collection** calls the SDK's selected-ID
 The collection callback explicitly refuses with
 **Opening collections isn't available in this build yet.** It does not return a
 fake connection, setup result or saved state. No setup, offline-sync or reminder
-promise is displayed without its real capability. SDK9ab cannot distinguish a
-user decline from every generic refusal, so the UI does not invent that state.
+promise is displayed without its real capability. A generic SDK refusal does
+not prove a user decline, so the UI does not invent that state.
 
 Focused presentation and React forwarding tests use labelled SDK stand-ins, not
 native sign-in/LAB qualification. Authenticated build inputs and qualified shared
