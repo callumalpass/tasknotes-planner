@@ -69,7 +69,10 @@ pnpm dev
 ```
 
 Open [http://127.0.0.1:4174/?demo=1](http://127.0.0.1:4174/?demo=1) for the
-sample plan, or remove `?demo=1` to connect an mdbase collection. Use
+sample plan, or remove `?demo=1` to connect an mdbase collection. The sample
+collection is labelled **Sample tasks**; its changes reset when you leave or
+reload. Choose its collection name to return to the connection screen. Leaving
+the sample also removes its URL flag, so reload does not reopen it. Use
 `127.0.0.1`, not the `localhost` alias: the manifest and callback share this
 single development origin.
 

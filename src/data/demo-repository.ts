@@ -59,7 +59,7 @@ export class DemoPlannerRepository implements PlannerRepository {
   constructor(today = dateFromDate(new Date())) {
     this.collection = {
       id: "demo-planning",
-      name: "Product planning",
+      name: "Sample tasks",
       tasks: demoTasks(today),
       views: [],
       statuses: demoStatuses,
