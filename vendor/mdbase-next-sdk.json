@@ -1,14 +1,16 @@
 {
   "package": "@mdbase-dev/sdk",
   "version": "0.0.0",
-  "artifact": "mdbase-dev-sdk-0.0.0-561501d0.tgz",
-  "sourceCommit": "561501d0c627b7808d02e403d65e949bdb78fa88",
-  "sha256": "8982d7e2442b29584931a965b96d3ddd0a2266fa70890c493a0ee1a7588e3948",
-  "integrity": "sha512-8TmGRP+O74AlMYpbMrPF9pzDpB98N5oLJXyFfR3rGhGqkkRKoyHlhMHNWVhwU/Yf+khFLzQtA4LtWlSAfoSSvw==",
+  "artifact": "mdbase-dev-sdk-0.0.0-8cbc82fb.tgz",
+  "sourceCommit": "8cbc82fb009edbafea12e5922dbe2f50b72c0be2",
+  "sha256": "2df752f8648f068b24dcfc2299bbeabde1644f405f9806109305396a5a49f82a",
+  "integrity": "sha512-Mr15wNz9/6j4R9ttsdaOl+Tw8sH1hrB1BV/xEsklDFoUMJDtEFwsg9ZQu7GgGkYjLLNjEfd91si0smyJ4zYjjQ==",
   "includesSessionFix808": true,
   "includesRecordLeases809": true,
   "includesMemoryDocumentCreate811": true,
+  "includesReadHelpers814": true,
   "sourceOnly": true,
   "nativeFilesProducerQualified": false,
+  "peopleProducerCompatibilityQualified": false,
   "perAppRuntimeTrustOriginAndOperationsQualified": false
 }
