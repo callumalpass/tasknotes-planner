@@ -134,6 +134,12 @@ signed release. This v2 draft must not deploy before the qualified v2 writer.
 The production declaration assumes `https://planner.tasknotes.dev/`. Update the
 homepage, icon, and redirect URI together if the deployment origin changes.
 
+## New SDK migration
+
+The existing Connect session remains the default. A native SDK data adapter is
+being prepared separately; it is not yet a browser sign-in mode. See
+[its behavior, pinned artifact, and remaining dependencies](docs/new-sdk.md).
+
 ## Repository structure
 
 ```text
