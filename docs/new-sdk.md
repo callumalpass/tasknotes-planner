@@ -4,6 +4,7 @@
 `@mdbase-dev/sdk` package. The existing Connect session remains the application
 default. There is **no working new-SDK browser sign-in switch in this change**;
 this data adapter is a foundation for the shared SDK web sign-in integration.
+The opt-in SDK sign-in UI below does not change the default runtime.
 Do not use it as evidence of launch readiness or a deployed app.
 
 ## Data behavior
@@ -87,3 +88,29 @@ parser now handles `create.document`; the source-create test no longer installs
 an app-side fixture bridge and still asserts the exact document submission. These tests are not LAB, native renderer,
 source-parser, sign-in, or end-to-end evidence. Run `pnpm verify` and
 `pnpm test:e2e` for the existing application checks.
+
+## Public SDK sign-in UI
+
+`createNativeSignIn(options)` uses the pinned SDK's actual `AppWebSignInSession`.
+All release, app identity, origin, runtime, locks and original signal inputs must
+be supplied explicitly by the app owner; no guessed build configuration is used.
+Pass its binding and an `onSignedOut` callback through `ConnectionGate`'s optional
+`nativeSignIn` prop. The owner closes the borrowed SDK session on teardown and
+creates a fresh SDK instance only after confirmed close or explicit sign-in.
+
+The UI reserves the mdbase tab synchronously before SDK start/expiry renewal,
+then delegates authorization and approval detection to the SDK. It renders actual
+SDK status/email, tab reopening, blocked-popup and interrupted states. Local
+**Sign out** waits for SDK `close()`; it neither revokes membership nor erases
+protected sign-in stores. **Forget collection** calls the SDK's selected-ID
+`forget` action. Failed or retired actions cannot publish another owner's state.
+
+The collection callback explicitly refuses with
+**Opening collections isn't available in this build yet.** It does not return a
+fake connection, setup result or saved state. No setup, offline-sync or reminder
+promise is displayed without its real capability. SDK9ab cannot distinguish a
+user decline from every generic refusal, so the UI does not invent that state.
+
+Focused presentation and React forwarding tests use labelled SDK stand-ins, not
+native sign-in/LAB qualification. Authenticated build inputs and qualified shared
+factory/setup composition remain required before a native runnable URL exists.
