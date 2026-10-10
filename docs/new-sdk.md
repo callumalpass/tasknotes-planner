@@ -72,7 +72,8 @@ are available and tested.
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
-The pin is the release-qualified successor at `8cbc82fb`, including SDK808's
+The pin is the release-qualified successor at `9ab0f31d`, including SDK816's explicit environment
+selection, SDK808's
 session fix, SDK809 leases, SDK811's fixture fix and SDK814's shared read helpers.
 This pin-only update does not change Planner's existing read/write implementation.
 Archive SHA256/SHA512 were verified. This is source/package qualification, not
