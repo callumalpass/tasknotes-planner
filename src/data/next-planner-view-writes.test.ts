@@ -336,15 +336,9 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
 
   it("creates a separate source with original record/MID identities rather than overwriting an existing name", async () => {
     const f = await fixture();
-    const original = f.client.create.bind(f.client);
-    // MemoryReplica ignores create.document in this qualified SDK archive. This
-    // explicit fixture bridge supplies body bytes without pretending to prove
-    // native source creation; the actual complete document input stays asserted.
-    const create = vi
-      .spyOn(f.client, "create")
-      .mockImplementation((input, options) =>
-        original({ ...input, body: input.document }, options),
-      );
+    // SDK811 now honors document creation in MemoryReplica. Observe the real
+    // shared helper submission without an app-side synthetic parser bridge.
+    const create = vi.spyOn(f.client, "create");
     const saved = await f.views.save({ name: "Updated" }, generated, f.signal);
     expect(saved).toMatchObject({ id: "0", name: "Updated", writable: true });
     expect(saved.path).toMatch(/^TaskNotes\/Views\/[0-9a-f-]{36}\.base$/);

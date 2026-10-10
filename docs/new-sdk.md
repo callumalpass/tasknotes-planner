@@ -72,15 +72,16 @@ are available and tested.
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
-The data-only pin is the release-qualified SDK #804 source archive at
-`d43204b6`; it contains no #807 browser bundle or #803 web sign-in session.
-It contains neither a qualified native Files producer nor a published release
-claim. The later SDK #807 archive is under a sign-in safety hold and must not be
-used to enable the browser/session path.
+The pin is the release-qualified corrected successor at `561501d0`, including
+SDK808's session fix, SDK809 record leases and SDK811's generic fixture fix.
+Archive SHA256/SHA512 were verified. This is source/package qualification, not
+per-app trust/origin/runtime/session/operation acceptance or a published release.
+The earlier SDK807 `5ba1314b` archive remains held and must not be reused; no
+browser/session path is enabled by this dependency update.
 
 Unit tests use the SDK's MemoryReplica for record/receipt frames, with synthetic
-native contract metadata and mocked AppBases results. Its `create.document`
-parser omission is explicitly bridged in the source-create test while asserting
-the exact document submission. These tests are not LAB, native renderer,
+native contract metadata and mocked AppBases results. SDK811's shared synthetic
+parser now handles `create.document`; the source-create test no longer installs
+an app-side fixture bridge and still asserts the exact document submission. These tests are not LAB, native renderer,
 source-parser, sign-in, or end-to-end evidence. Run `pnpm verify` and
 `pnpm test:e2e` for the existing application checks.
