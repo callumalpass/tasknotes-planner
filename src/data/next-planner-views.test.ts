@@ -95,7 +95,7 @@ describe("NextPlannerViews (native results mocked, not LAB/runtime support)", ()
       key: `${f.descriptor.record}#2`,
       id: "2",
       name: "Launch",
-      writable: false,
+      writable: true,
       options: { zoom: 4, project: "work", showCompleted: false },
     });
     expect(f.source).toHaveBeenCalledWith(
@@ -202,7 +202,7 @@ describe("NextPlannerViews (native results mocked, not LAB/runtime support)", ()
     await expect(f.views.execute(view, signal)).rejects.toThrow("row changed");
   });
 
-  it("does not silently create view records before the generic source-write API exists", async () => {
+  it("refuses an invalid generated save definition before any source creation", async () => {
     const f = await fixture();
     const create = vi.spyOn(f.client, "create");
     await expect(
@@ -211,7 +211,7 @@ describe("NextPlannerViews (native results mocked, not LAB/runtime support)", ()
         "views: []",
         new AbortController().signal,
       ),
-    ).rejects.toThrow("shared SDK view-source write API");
+    ).rejects.toThrow("exactly one view");
     expect(create).not.toHaveBeenCalled();
   });
 });

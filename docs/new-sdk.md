@@ -18,9 +18,12 @@ Do not use it as evidence of launch readiness or a deployed app.
 - Reads the current task before editing, checks its portable identity and type,
   applies explicit CAS, waits for a receipt, and reads the confirmed record back.
   Portable completion and dependency behavior still comes from `@tasknotes/model`.
-- Unconfirmed and unknown outcomes remain visible through the existing pending
-  mutation port. Recovery looks up the **same mutation**, never resubmits a new
-  edit. Protected/conflicted tasks must be resolved in TaskNotes.
+- Unconfirmed/unknown outcomes and ambiguous internal SDK response errors remain
+  visible through the existing pending mutation port. Task writes retain their
+  original native target until confirmed, unprotected current readback succeeds;
+  a receipt alone cannot publish another consumer's pending edit as saved.
+  Recovery looks up the **same mutation**, never resubmits a new edit.
+  Protected/conflicted tasks must be resolved in TaskNotes.
 - The change subscription is established before loading a snapshot. Repository
   disposal aborts outstanding work and closes the watch, not the session-owned
   SDK client.
@@ -33,14 +36,25 @@ ordinal unchanged. Options come from that exact source; filtering and ordering
 remain native. Row metadata is read in bounded parallel batches and checked
 against the native row revisions. There is no generic saved-view RPC fallback.
 
-The currently pinned runtime does not yet admit arbitrary `tasknotesPlanner`
-renderers. This needs the generic Bases change in mdbase-next PR #802 and a new
-release-qualified runtime/SDK. Native refusal remains an error, not an empty
-catalog or an all-tasks fallback.
+The generic renderer change in mdbase-next PR #802 is merged, but its native
+runtime/trust still needs qualification and delivery. Native refusal remains an
+error, not an empty catalog or an all-tasks fallback.
 
-Saving views is explicitly unavailable pending the shared SDK `views.createSource`,
-`views.updateSource`, and `views.getSourceRecord` APIs. The native adapter marks
-sources read-only and refuses writes rather than creating ad hoc records.
+Saved-view writes use the shared SDK #804 `views.createSource`,
+`views.updateSource`, and `views.getSourceRecord` APIs. Updates require the actual
+full source at the selected UUID/path/revision, and change Planner-owned fields
+at the original ordinal. Root metadata, siblings, renderer aliases and unknown
+options are retained through the YAML document model; unsupported/aliased
+selected declarations are refused rather than overwritten. Serialization can
+change YAML formatting. New sources use a separate captured record UUID under
+`TaskNotes/Views/`, not a name-based overwrite.
+
+Original native mutation IDs remain visible for receipt/readback-only recovery.
+Saved results require actual confirmation, unprotected current full-source
+readback, and native discovery of the same UUID/source revision/original ordinal.
+Restored source intents qualify their actual complete source without inventing
+lost ordinal metadata. View and task writes share the repository's pending-write
+boundary; no separate autosave/session engine is introduced.
 
 Shared web sign-in and manifest-driven setup must be integrated from the SDK;
 Planner does not implement private auth/route/grant protocols or a second setup
@@ -51,9 +65,15 @@ are available and tested.
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
-It contains neither the unmerged Files API nor a published release claim.
+The data-only pin is the release-qualified SDK #804 source archive at
+`d43204b6`; it contains no #807 browser bundle or #803 web sign-in session.
+It contains neither a qualified native Files producer nor a published release
+claim. The later SDK #807 archive is under a sign-in safety hold and must not be
+used to enable the browser/session path.
 
 Unit tests use the SDK's MemoryReplica for record/receipt frames, with synthetic
-native contract metadata and mocked AppBases results. They are not LAB, native
-renderer, sign-in, or end-to-end evidence. Run `pnpm verify` and
+native contract metadata and mocked AppBases results. Its `create.document`
+parser omission is explicitly bridged in the source-create test while asserting
+the exact document submission. These tests are not LAB, native renderer,
+source-parser, sign-in, or end-to-end evidence. Run `pnpm verify` and
 `pnpm test:e2e` for the existing application checks.

@@ -1,7 +1,11 @@
 import { MdbaseError, type MdbaseClient, type wire } from "@mdbase-dev/sdk";
 import type { AppBasesDescriptor } from "@mdbase-dev/sdk/app-host";
-import { parse } from "yaml";
-import type { PlannerView, SavePlannerViewInput } from "../domain/task";
+import { isMap, isSeq, parse, parseDocument } from "yaml";
+import type {
+  PendingPlannerMutation,
+  PlannerView,
+  SavePlannerViewInput,
+} from "../domain/task";
 
 export interface NextPlannerViewAccess {
   list(signal: AbortSignal): Promise<PlannerView[]>;
@@ -11,12 +15,27 @@ export interface NextPlannerViewAccess {
     document: string,
     signal: AbortSignal,
   ): Promise<PlannerView>;
+  pendingMutations?(): readonly PendingPlannerMutation[];
+  recoverPendingMutation?(
+    requestId: string,
+    signal: AbortSignal,
+  ): Promise<void>;
+  restorePending?(
+    mutations: Awaited<ReturnType<MdbaseClient["pendingWrites"]>>,
+  ): void;
+}
+
+interface SourceMutation extends PendingPlannerMutation {
+  recordId: string;
+  ordinal?: number;
+  name?: string;
 }
 
 /** Native view identity is UUID + source SHA + original declaration ordinal.
  * Names and paths are presentation only, never execution selectors. */
 export class NextPlannerViews implements NextPlannerViewAccess {
   private descriptors = new Map<string, AppBasesDescriptor>();
+  private readonly pending = new Map<string, SourceMutation>();
 
   constructor(private readonly client: MdbaseClient) {}
 
@@ -85,8 +104,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
           name: descriptor.name ?? "Planner",
           format: "obsidian.base",
           revision: descriptor.sourceRevision,
-          // Source writes become available only with the shared SDK write API.
-          writable: false,
+          writable: true,
           options: {
             ...(typeof options.zoom === "number" &&
             Number.isFinite(options.zoom)
@@ -169,18 +187,214 @@ export class NextPlannerViews implements NextPlannerViewAccess {
   }
 
   async save(
-    _input: SavePlannerViewInput,
-    _document: string,
+    input: SavePlannerViewInput,
+    document: string,
     signal: AbortSignal,
   ): Promise<PlannerView> {
     signal.throwIfAborted();
-    throw new MdbaseError({
-      code: "invalid_request",
-      recovery: "fix_request",
-      reason: "unsupported",
-      message:
-        "Saving Planner views needs the shared SDK view-source write API. Existing views are read-only in this build.",
+    if (this.pending.size)
+      throw new Error(
+        "Recover the pending view write before saving another view.",
+      );
+    const name = input.name;
+    const definition = object(parse(document));
+    if (!Array.isArray(definition.views) || definition.views.length !== 1)
+      throw new Error(
+        "A saved Planner definition must contain exactly one view.",
+      );
+    const replacement = object(definition.views[0]);
+    if (
+      !plannerType(replacement.type) ||
+      replacement.name !== name ||
+      !name.trim()
+    )
+      throw new Error(
+        "The saved definition does not match the requested Planner view.",
+      );
+
+    let base: wire.RecordView | undefined;
+    let ordinal = 0;
+    let recordId: string;
+    if (input.view) {
+      const descriptor = this.descriptors.get(input.view.key);
+      if (
+        !descriptor ||
+        descriptor.path !== input.view.path ||
+        descriptor.sourceRevision !== input.view.revision ||
+        String(descriptor.ordinal) !== input.view.id
+      )
+        throw new Error("Refresh this saved view before changing it.");
+      base = await this.client.views.getSourceRecord(descriptor.record, {
+        signal,
+      });
+      signal.throwIfAborted();
+      if (
+        base.id !== descriptor.record ||
+        base.path !== descriptor.path ||
+        base.revision !== descriptor.sourceRevision
+      )
+        throw new Error(
+          "The saved view source changed. Refresh before saving it.",
+        );
+      assertWritable(base);
+      ordinal = descriptor.ordinal;
+      recordId = base.id;
+      document = replaceSelected(base.document!, descriptor, replacement);
+    } else {
+      recordId = crypto.randomUUID();
+    }
+    signal.throwIfAborted();
+    if (this.pending.size)
+      throw new Error(
+        "Recover the pending view write before saving another view.",
+      );
+    const mutationId = crypto.randomUUID();
+    const mutation: SourceMutation = {
+      requestId: mutationId,
+      operation: base ? "view-update" : "view-create",
+      createdAt: new Date().toISOString(),
+      recordId,
+      ordinal,
+      name,
+    };
+    this.pending.set(mutationId, mutation);
+    // Keep both original identities on every ambiguous SDK failure. The shared
+    // helper supplies actual source CAS; no private RPC or read-and-overwrite.
+    const write = base
+      ? await this.client.views.updateSource(base, document, {
+          mutationId,
+          signal,
+        })
+      : await this.client.views.createSource(
+          { id: recordId, path: `TaskNotes/Views/${recordId}.base`, document },
+          { mutationId, signal },
+        );
+    signal.throwIfAborted();
+    if (write.mutationId !== mutationId)
+      throw new Error("The view write changed its mutation identity.");
+    const record = await this.confirm(mutation, signal);
+    const saved = await this.savedView(mutation, record, signal);
+    this.pending.delete(mutationId);
+    return saved;
+  }
+
+  pendingMutations(): readonly PendingPlannerMutation[] {
+    return [...this.pending.values()].map(
+      ({ requestId, operation, createdAt }) => ({
+        requestId,
+        operation,
+        createdAt,
+      }),
+    );
+  }
+
+  restorePending(
+    mutations: Awaited<ReturnType<MdbaseClient["pendingWrites"]>>,
+  ): void {
+    for (const mutation of mutations) {
+      if (
+        mutation.ops.length !== 1 ||
+        this.pending.has(mutation.receipt.mutation)
+      )
+        continue;
+      const op = mutation.ops[0];
+      if (op.kind !== "create" && op.kind !== "document") continue;
+      const document =
+        op.kind === "create"
+          ? op.document
+          : op.kind === "document"
+            ? op.new?.doc
+            : undefined;
+      const path =
+        op.kind === "create"
+          ? op.path
+          : op.kind === "document"
+            ? op.new?.path
+            : undefined;
+      if (
+        !path?.toLowerCase().endsWith(".base") ||
+        !document ||
+        !plannerSource(document)
+      )
+        continue;
+      this.pending.set(mutation.receipt.mutation, {
+        requestId: mutation.receipt.mutation,
+        operation: op.kind === "create" ? "view-create" : "view-update",
+        createdAt: new Date(mutation.captured).toISOString(),
+        recordId: op.id,
+      });
+    }
+  }
+
+  async recoverPendingMutation(
+    requestId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const mutation = this.pending.get(requestId);
+    if (!mutation)
+      throw new Error("The exact pending view write is unavailable.");
+    const record = await this.confirm(mutation, signal);
+    // A live intent retains its selected ordinal/name. Restored native intents
+    // can qualify the full source without inventing a lost selected ordinal.
+    if (mutation.ordinal !== undefined)
+      await this.savedView(mutation, record, signal);
+    signal.throwIfAborted();
+    this.pending.delete(requestId);
+  }
+
+  private async confirm(
+    mutation: SourceMutation,
+    signal: AbortSignal,
+  ): Promise<wire.RecordView> {
+    const receipt = await this.client.awaitReceipt(
+      mutation.requestId,
+      30_000,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (receipt.mutation !== mutation.requestId)
+      throw new Error("The view receipt changed its mutation identity.");
+    if (receipt.state === "pending" || receipt.state === "unknown")
+      throw new Error(
+        "The view write is not confirmed. Recover its original operation before saving again.",
+      );
+    if (receipt.state === "rejected" || receipt.status === "conflicted") {
+      this.pending.delete(mutation.requestId);
+      throw receipt.problem
+        ? new MdbaseError(receipt.problem)
+        : new Error(
+            "Resolve the rejected or conflicted view change before saving again.",
+          );
+    }
+    const record = await this.client.views.getSourceRecord(mutation.recordId, {
+      signal,
     });
+    signal.throwIfAborted();
+    if (record.id !== mutation.recordId)
+      throw new Error("The saved view changed its record identity.");
+    assertWritable(record);
+    return record;
+  }
+
+  private async savedView(
+    mutation: SourceMutation,
+    record: wire.RecordView,
+    signal: AbortSignal,
+  ): Promise<PlannerView> {
+    const views = await this.list(signal);
+    const saved = views.find(
+      (view) => view.key === `${record.id}#${mutation.ordinal}`,
+    );
+    if (
+      !saved ||
+      saved.path !== record.path ||
+      saved.revision !== record.revision ||
+      saved.name !== mutation.name
+    )
+      throw new Error(
+        "The confirmed view changed its selected declaration. Keep the original operation for recovery.",
+      );
+    return saved;
   }
 
   private async source(
@@ -196,6 +410,87 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     if (result.kind === "refusal") throw new MdbaseError(result.problem);
     assertIdentity(result.view, descriptor);
     return result.source;
+  }
+}
+
+function plannerType(value: unknown): boolean {
+  return value === "tasknotesPlanner" || value === "tasknotes.planner";
+}
+
+function assertWritable(record: wire.RecordView): void {
+  if (
+    record.state.state !== "confirmed" ||
+    record.state.hold !== undefined ||
+    (record.state.unresolved ?? 0) !== 0
+  )
+    throw new Error(
+      "The view source is pending or protected. Keep its original operation for recovery.",
+    );
+}
+
+/** Only Planner-owned fields in the original declaration are changed. Keep root
+ * metadata, siblings, renderer aliases and unknown options rather than replacing
+ * a multi-view Base with the generated single-view definition. */
+function replaceSelected(
+  source: string,
+  descriptor: AppBasesDescriptor,
+  replacement: Record<string, unknown>,
+): string {
+  const document = parseDocument(source);
+  if (document.errors.length)
+    throw new Error("The Base source cannot be edited safely.");
+  const declarations = document.get("views", true);
+  if (!isSeq(declarations))
+    throw new Error("The Base source has no editable view declarations.");
+  const selected = declarations.items[descriptor.ordinal];
+  if (
+    !isMap(selected) ||
+    (typeof selected.get("name") === "string" ? selected.get("name") : null) !==
+      descriptor.name ||
+    selected.get("type") !== descriptor.viewType
+  )
+    throw new Error(
+      "The Base source changed its original selected declaration.",
+    );
+  selected.set("name", replacement.name);
+  for (const key of ["filters", "order", "sort"]) {
+    if (replacement[key] === undefined) selected.delete(key);
+    else selected.set(key, document.createNode(replacement[key]));
+  }
+  const options = object(replacement.options ?? {});
+  const current = selected.get("options", true);
+  if (current !== undefined && !isMap(current))
+    throw new Error("The Base options cannot be edited safely.");
+  if (isMap(current)) {
+    for (const key of [
+      "zoom",
+      "project",
+      "status",
+      "priority",
+      "showCompleted",
+    ]) {
+      if (options[key] === undefined) current.delete(key);
+      else current.set(key, document.createNode(options[key]));
+    }
+  } else selected.set("options", document.createNode(options));
+  return document.toString();
+}
+
+function plannerSource(source: string): boolean {
+  try {
+    const value = object(parse(source));
+    return (
+      Array.isArray(value.views) &&
+      value.views.some(
+        (view) =>
+          view !== null &&
+          typeof view === "object" &&
+          !Array.isArray(view) &&
+          plannerType((view as Record<string, unknown>).type),
+      )
+    );
+  } catch {
+    return false;
   }
 }
 

@@ -4,7 +4,6 @@ import {
   type MdbaseClient,
   type PlainValue,
   type wire,
-  type Write,
 } from "@mdbase-dev/sdk";
 import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 import {
@@ -50,11 +49,15 @@ import {
 export class NextPlannerRepository implements PlannerRepository {
   private readonly scope = new AbortController();
   private configurations = new Map<string, TaskTypeConfiguration>();
-  private readonly pending = new Map<string, PendingPlannerMutation>();
+  private readonly pending = new Map<
+    string,
+    PendingPlannerMutation & { recordId?: string }
+  >();
   private readonly listeners = new Set<() => void>();
   private changesWatch: ReturnType<MdbaseClient["watchChanges"]> | undefined;
   private generation = 0;
   private configurationGeneration = -1;
+  private savingView = false;
   private readonly views: NextPlannerViewAccess;
 
   constructor(
@@ -150,12 +153,23 @@ export class NextPlannerRepository implements PlannerRepository {
         );
       identities.add(item.id);
     }
-    for (const mutation of mutations)
+    this.views.restorePending?.(mutations);
+    const viewMutations = new Set(
+      (this.views.pendingMutations?.() ?? []).map(
+        (mutation) => mutation.requestId,
+      ),
+    );
+    for (const mutation of mutations) {
+      if (viewMutations.has(mutation.receipt.mutation)) continue;
+      const op = mutation.ops.length === 1 ? mutation.ops[0] : undefined;
       this.pending.set(mutation.receipt.mutation, {
+        ...this.pending.get(mutation.receipt.mutation),
         requestId: mutation.receipt.mutation,
         operation: mutation.ops.map((op) => op.kind).join(", "),
         createdAt: new Date(mutation.captured).toISOString(),
+        ...(op?.kind === "update" ? { recordId: op.id } : {}),
       });
+    }
     this.configurations = configurations;
     this.configurationGeneration = generation;
     return {
@@ -243,25 +257,56 @@ export class NextPlannerRepository implements PlannerRepository {
   async saveView(input: SavePlannerViewInput): Promise<PlannerView> {
     const name = input.name.trim();
     if (!name) throw new Error("Give this view a name before saving it.");
-    return this.views.save(
-      { ...input, name },
-      stringify(
-        plannerViewDefinition(name, input, this.configurations.values()),
-        { lineWidth: 0 },
-      ),
-      this.signal(),
-    );
+    if (this.savingView || this.pendingMutations().length)
+      throw new Error("Check the pending write before saving a view.");
+    if (this.configurationGeneration !== this.generation) throw changed();
+    this.savingView = true;
+    try {
+      return await this.views.save(
+        { ...input, name },
+        stringify(
+          plannerViewDefinition(name, input, this.configurations.values()),
+          { lineWidth: 0 },
+        ),
+        this.signal(),
+      );
+    } finally {
+      this.savingView = false;
+    }
   }
 
   pendingMutations(): readonly PendingPlannerMutation[] {
-    return [...this.pending.values()];
+    return [
+      ...[...this.pending.values()].map(
+        ({ requestId, operation, createdAt }) => ({
+          requestId,
+          operation,
+          createdAt,
+        }),
+      ),
+      ...(this.views.pendingMutations?.() ?? []),
+    ];
   }
 
   async recoverPendingMutation(requestId: string): Promise<void> {
-    if (!this.pending.has(requestId)) return;
     const signal = this.signal();
+    if (
+      this.views
+        .pendingMutations?.()
+        .some((mutation) => mutation.requestId === requestId)
+    ) {
+      if (!this.views.recoverPendingMutation)
+        throw new Error("View recovery is unavailable.");
+      await this.views.recoverPendingMutation(requestId, signal);
+      signal.throwIfAborted();
+      this.pending.delete(requestId);
+      this.emit();
+      return;
+    }
+    if (!this.pending.has(requestId)) return;
     await this.confirm(requestId, signal);
     signal.throwIfAborted();
+    this.pending.delete(requestId);
     this.emit();
   }
 
@@ -301,7 +346,7 @@ export class NextPlannerRepository implements PlannerRepository {
       config: TaskTypeConfiguration,
     ) => JsonObject,
   ): Promise<PlannerTask> {
-    if (this.pending.size)
+    if (this.savingView || this.pendingMutations().length)
       throw new Error("Check the pending write before making another change.");
     const signal = this.signal();
     const config = this.configuration(item);
@@ -338,46 +383,41 @@ export class NextPlannerRepository implements PlannerRepository {
       mapped[field] = value as PlainValue;
     }
     if (!Object.keys(mapped).length) return task(record, configurations);
-    // Another inspector operation may have finished its read concurrently.
-    if (this.pending.size)
+    // Another inspector or view save may have finished its read concurrently.
+    if (this.savingView || this.pendingMutations().length)
       throw new Error("Check the pending write before making another change.");
     const mutationId = crypto.randomUUID();
     this.pending.set(mutationId, {
       requestId: mutationId,
       operation: "update",
       createdAt: new Date().toISOString(),
+      recordId: record.id,
     });
-    let write: Write;
-    try {
-      write = await this.client.update(
-        record,
-        { patch: mapped, ifRevision: record.revision },
-        { mutationId, signal },
-      );
-    } catch (reason) {
-      // A transport failure may have crossed the submission boundary. Keep the
-      // same mutation for receipt recovery; never mint a retry on that basis.
-      if (
-        reason instanceof MdbaseError &&
-        !["outcome_unknown", "unavailable", "cancelled"].includes(reason.code)
-      )
-        this.pending.delete(mutationId);
-      throw reason;
-    }
+    // Even an internal SDK response error can follow native capture. Keep the
+    // original identity until an actual receipt and current readback qualify it.
+    const write = await this.client.update(
+      record,
+      { patch: mapped, ifRevision: record.revision },
+      { mutationId, signal },
+    );
     if (write.mutationId !== mutationId)
       throw new Error("The write changed its mutation identity.");
-    await this.confirm(mutationId, signal);
-    const saved = await this.client.get(record.id, { effective: true }, signal);
-    signal.throwIfAborted();
+    const saved = await this.confirm(mutationId, signal);
+    if (!saved)
+      throw new Error("The saved task's native target is unavailable.");
     const result = task(saved, configurations);
     if (result.id !== item.id || result.providerType !== config.typeName)
       throw new Error(
         "The saved task changed its portable identity. Refresh Planner.",
       );
+    this.pending.delete(mutationId);
     return result;
   }
 
-  private async confirm(mutation: string, signal: AbortSignal): Promise<void> {
+  private async confirm(
+    mutation: string,
+    signal: AbortSignal,
+  ): Promise<wire.RecordView | undefined> {
     const receipt = await this.client.awaitReceipt(mutation, 30_000, signal);
     signal.throwIfAborted();
     if (receipt.mutation !== mutation)
@@ -386,15 +426,32 @@ export class NextPlannerRepository implements PlannerRepository {
       throw new Error(
         "The write outcome is not confirmed. Check the pending write before trying again.",
       );
-    this.pending.delete(mutation);
-    if (receipt.state === "rejected")
+    if (receipt.state === "rejected") {
+      this.pending.delete(mutation);
       throw receipt.problem
         ? new MdbaseError(receipt.problem)
         : new Error("The task change was rejected.");
-    if (receipt.status === "conflicted")
+    }
+    if (receipt.status === "conflicted") {
+      this.pending.delete(mutation);
       throw new Error(
         "This change has a conflict. Resolve it in TaskNotes before planning.",
       );
+    }
+    const target = this.pending.get(mutation)?.recordId;
+    if (!target) return undefined;
+    const record = await this.client.get(target, { effective: true }, signal);
+    signal.throwIfAborted();
+    if (
+      record.id !== target ||
+      record.state.state !== "confirmed" ||
+      record.state.hold ||
+      record.state.unresolved
+    )
+      throw new Error(
+        "The current task is pending or protected. Keep the original write for recovery before reporting it as saved.",
+      );
+    return record;
   }
 
   private signal(): AbortSignal {
