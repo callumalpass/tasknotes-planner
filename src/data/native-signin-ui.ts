@@ -2,8 +2,9 @@ import { AppWebSignInSession } from "@mdbase-dev/sdk/app-host";
 import type {
   AppWebSignInSessionOptions,
   AppWebSignInSnapshot,
-  AppWebSignInPortal,
 } from "@mdbase-dev/sdk/app-host";
+import { openConnectPopup, type ConnectPopup } from "./connect-popup";
+export { ConnectPopupBlocked as SignInTabBlocked } from "./connect-popup";
 
 export type NativeSignInSession = Pick<
   AppWebSignInSession<never>,
@@ -28,42 +29,28 @@ export const signInCopy = Object.freeze({
   unavailable: "Opening collections isn't available in this build yet.",
 });
 
-export class SignInTabBlocked extends Error {
-  constructor() {
-    super(signInCopy.tabBlocked);
-  }
-}
-
 /** UI-only public portal capability. The SDK supplies the validated URI. */
-export function openSignInPortal(): AppWebSignInPortal {
-  const tab = window.open("about:blank", "_blank");
-  if (!tab) throw new SignInTabBlocked();
-  tab.opener = null;
-  return {
-    navigate(uri) {
-      tab.location.replace(uri);
-    },
-    close() {
-      tab.close();
-    },
-  };
-}
+export const openSignInPortal = openConnectPopup;
 
-/** UI-owned tab reservation for asynchronous SDK start/expiry renewal. */
+// Popup names are UI ownership identities, never native IDs or namespaces.
+let nextPortalKey = 0;
+
+/** Keep the owned handle after SDK handoff, including when it was closed by hand. */
 export function createSignInPortalUi() {
-  let reserved: AppWebSignInPortal | null = null;
+  const name = `tasknotes-planner-connect-${++nextPortalKey}`;
+  let active: ConnectPopup | null = null;
   return {
     reserve() {
-      if (!reserved) reserved = openSignInPortal();
+      if (!active || active.closed) active = openSignInPortal(name);
     },
     open() {
-      const portal = reserved ?? openSignInPortal();
-      reserved = null;
-      return portal;
+      if (!active || active.closed) active = openSignInPortal(name);
+      return active;
     },
     cancel() {
-      reserved?.close();
-      reserved = null;
+      const original = active;
+      active = null;
+      original?.close();
     },
   };
 }
