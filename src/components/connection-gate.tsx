@@ -23,11 +23,32 @@ import {
 import { MdbasePlannerRepository } from "../data/mdbase-repository";
 import { errorMessage, requireOutcome } from "../data/outcome";
 import { Planner } from "./planner";
+import { NativeSignIn } from "./native-signin";
+import type { createNativeSignIn } from "../data/native-signin-ui";
 
 const START_TIMEOUT_MS = 20_000;
 const CALLBACK_START_TIMEOUT_MS = 60_000;
 
-export function ConnectionGate({ onDemo }: { onDemo(): void }) {
+export function ConnectionGate({
+  onDemo,
+  nativeSignIn,
+}: {
+  onDemo(): void;
+  nativeSignIn?: {
+    binding: ReturnType<typeof createNativeSignIn>;
+    onSignedOut(): void;
+  };
+}) {
+  // Real native composition supplies authenticated build inputs and owns the SDK
+  // lifetime. Until delivered, preserve the existing default runtime unchanged.
+  return nativeSignIn ? (
+    <NativeSignIn {...nativeSignIn} />
+  ) : (
+    <LegacyConnectionGate onDemo={onDemo} />
+  );
+}
+
+function LegacyConnectionGate({ onDemo }: { onDemo(): void }) {
   const snapshot = useSyncExternalStore(
     (listener) => plannerSession.subscribe(listener),
     () => plannerSession.getSnapshot(),
