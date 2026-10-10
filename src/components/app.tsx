@@ -8,10 +8,16 @@ export function App() {
   const [demo, setDemo] = useState(
     () => new URL(location.href).searchParams.get("demo") === "1",
   );
+  const leaveDemo = () => {
+    const url = new URL(location.href);
+    url.searchParams.delete("demo");
+    history.replaceState(history.state, "", url);
+    setDemo(false);
+  };
   return demo ? (
     <Planner
       repository={new DemoPlannerRepository()}
-      onChangeCollection={() => setDemo(false)}
+      onChangeCollection={leaveDemo}
     />
   ) : (
     <ConnectionGate onDemo={() => setDemo(true)} />
