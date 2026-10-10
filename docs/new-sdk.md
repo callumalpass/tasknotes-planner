@@ -22,6 +22,8 @@ Do not use it as evidence of launch readiness or a deployed app.
   visible through the existing pending mutation port. Task writes retain their
   original native target until confirmed, unprotected current readback succeeds;
   a receipt alone cannot publish another consumer's pending edit as saved.
+  Live recovery applies the original portable identity/provider witness as well
+  as the native UUID/state checks. Restored intents do not invent lost witnesses.
   Recovery looks up the **same mutation**, never resubmits a new edit.
   Protected/conflicted tasks must be resolved in TaskNotes.
 - The change subscription is established before loading a snapshot. Repository
@@ -45,7 +47,12 @@ Saved-view writes use the shared SDK #804 `views.createSource`,
 full source at the selected UUID/path/revision, and change Planner-owned fields
 at the original ordinal. Root metadata, siblings, renderer aliases and unknown
 options are retained through the YAML document model; unsupported/aliased
-selected declarations are refused rather than overwritten. Serialization can
+selected declarations, including anchors anywhere in the selected subtree,
+are refused before capture rather than risking shared-node sibling changes.
+View writability uses the supplied role/capability and current native source
+state; create/edit preflight refuses unsupported grants before minting an intent
+or calling the source helper. Native enforcement remains authoritative.
+Serialization can
 change YAML formatting. New sources use a separate captured record UUID under
 `TaskNotes/Views/`, not a name-based overwrite.
 

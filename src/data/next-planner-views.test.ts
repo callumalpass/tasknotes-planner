@@ -26,10 +26,14 @@ async function fixture() {
     reconnect: false,
   });
   clients.push(client);
+  const document =
+    "views:\n  - type: table\n    name: First\n  - type: cards\n    name: Second\n  - type: tasknotesPlanner\n    name: Launch\n    options:\n      zoom: 4\n      project: work\n      showCompleted: false\n";
+  const base = replica.seed({ path: "work/plans.base", body: document });
+  const baseView = await client.get(base.id);
   const descriptor: AppBasesDescriptor = {
-    record: crypto.randomUUID(),
-    path: "work/plans.base",
-    sourceRevision: "a".repeat(64),
+    record: baseView.id,
+    path: baseView.path,
+    sourceRevision: baseView.revision,
     ordinal: 2,
     name: "Launch",
     viewType: "tasknotesPlanner",
@@ -50,8 +54,7 @@ async function fixture() {
   const source = vi.spyOn(client, "readAppBasesViewSource").mockResolvedValue({
     kind: "success",
     view: descriptor,
-    source:
-      "views:\n  - type: table\n    name: First\n  - type: cards\n    name: Second\n  - type: tasknotesPlanner\n    name: Launch\n    options:\n      zoom: 4\n      project: work\n      showCompleted: false\n",
+    source: document,
     clock,
     collectionRevision: "b".repeat(64),
   });

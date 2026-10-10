@@ -517,4 +517,62 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     expect(f.views.execute).toHaveBeenCalledWith(view, expect.any(AbortSignal));
     await expect(f.repo.load("missing")).rejects.toThrow("no longer available");
   });
+
+  it("retains the original admitted provider witness during live recovery", async () => {
+    const f = await fixture();
+    const catalog = await f.client.describe();
+    const originalType = catalog.types[0];
+    vi.mocked(f.client.describe).mockResolvedValue({
+      ...catalog,
+      types: [...catalog.types, { ...originalType, name: "alternate-task" }],
+    });
+    const [item] = (await f.repo.load()).tasks;
+    const original = f.client.get.bind(f.client);
+    vi.spyOn(f.client, "get").mockImplementation(async (...args) => {
+      const current = await original(...args);
+      return args[0] === f.record.id
+        ? { ...current, types: ["alternate-task"] }
+        : current;
+    });
+    const update = vi.spyOn(f.client, "update");
+    await expect(
+      f.repo.updateSchedule(item, { due: "2026-10-12" }),
+    ).rejects.toThrow("portable identity");
+    const [pending] = f.repo.pendingMutations();
+    await expect(
+      f.repo.recoverPendingMutation(pending.requestId),
+    ).rejects.toThrow("portable identity");
+    expect(f.repo.pendingMutations()).toEqual([pending]);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  // Clients' independent regression: readback is mocked, not native proof.
+  it("uses the original portable identity witness during live task recovery too", async () => {
+    const f = await fixture();
+    const [item] = (await f.repo.load()).tasks;
+    const original = f.client.get.bind(f.client);
+    vi.spyOn(f.client, "get").mockImplementation(async (...args) => {
+      const current = await original(...args);
+      if (args[0] !== f.record.id) return current;
+      return {
+        ...current,
+        frontmatter: new Map(current.frontmatter).set("id", "replacement"),
+        effective: new Map(current.effective ?? current.frontmatter).set(
+          "id",
+          "replacement",
+        ),
+      };
+    });
+    const update = vi.spyOn(f.client, "update");
+    await expect(
+      f.repo.updateSchedule(item, { due: "2026-10-12" }),
+    ).rejects.toThrow("saved task changed its portable identity");
+    const [pending] = f.repo.pendingMutations();
+    expect(pending).toBeDefined();
+    await expect(
+      f.repo.recoverPendingMutation(pending.requestId),
+    ).rejects.toThrow();
+    expect(f.repo.pendingMutations()).toEqual([pending]);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
 });

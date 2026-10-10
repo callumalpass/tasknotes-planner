@@ -41,9 +41,19 @@ const generated = `views:
       showCompleted: false
 `;
 
-async function fixture(pending = false) {
-  const replica = new MemoryReplica({ confirmDelayMs: pending ? null : 0 });
-  const seeded = replica.seed({ path: "work/plans.base", body: source });
+async function fixture(
+  pending = false,
+  options: { source?: string; role?: wire.Role; capabilities?: string[] } = {},
+) {
+  const replica = new MemoryReplica({
+    confirmDelayMs: pending ? null : 0,
+    role: options.role,
+    capabilities: options.capabilities,
+  });
+  const seeded = replica.seed({
+    path: "work/plans.base",
+    body: options.source ?? source,
+  });
   const client = await connect({
     connector: replica.connector(),
     app: { name: "planner-source-test", version: "test" },
@@ -352,4 +362,109 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
       f.replica.allRecords.filter((record) => record.path.endsWith(".base")),
     ).toHaveLength(2);
   });
+
+  // Clients' independent regressions; controlled metadata, not native/LAB proof.
+  it.each([
+    {
+      role: "viewer" as const,
+      capabilities: ["collection.read", "records.edit"],
+    },
+    { role: "editor" as const, capabilities: ["collection.read"] },
+  ])(
+    "does not advertise or capture source edits without an edit grant ($role)",
+    async (grant) => {
+      const f = await fixture(false, grant);
+      const [view] = await f.views.list(f.signal);
+      expect(view.writable).toBe(false);
+      const update = vi.spyOn(f.client.views, "updateSource");
+      await expect(
+        f.views.save({ name: "Updated", view }, generated, f.signal),
+      ).rejects.toThrow();
+      expect(update).not.toHaveBeenCalled();
+      expect(f.views.pendingMutations()).toEqual([]);
+    },
+  );
+
+  it.each([
+    { role: "viewer" as const, capabilities: ["records.create"] },
+    {
+      role: "editor" as const,
+      capabilities: ["collection.read", "records.edit"],
+    },
+  ])(
+    "does not mint source create identities without a create grant ($role)",
+    async (grant) => {
+      const f = await fixture(false, grant);
+      const create = vi.spyOn(f.client.views, "createSource");
+      const uuid = vi.spyOn(crypto, "randomUUID");
+      await expect(
+        f.views.save({ name: "Updated" }, generated, f.signal),
+      ).rejects.toThrow("supplied session");
+      expect(create).not.toHaveBeenCalled();
+      expect(uuid).not.toHaveBeenCalled();
+      expect(f.views.pendingMutations()).toEqual([]);
+    },
+  );
+
+  it.each([
+    { state: "pending" as const },
+    {
+      state: "confirmed" as const,
+      hold: { id: crypto.randomUUID(), reason: "conflict" as const },
+    },
+    { state: "confirmed" as const, unresolved: 1 },
+  ])(
+    "does not advertise pending or protected source state as writable (%#)",
+    async (state) => {
+      const f = await fixture();
+      const original = f.client.get.bind(f.client);
+      vi.spyOn(f.client, "get").mockImplementation(async (...args) => {
+        const record = await original(...args);
+        return { ...record, state: { ...record.state, ...state } };
+      });
+      const [view] = await f.views.list(f.signal);
+      expect(view.writable).toBe(false);
+      const update = vi.spyOn(f.client.views, "updateSource");
+      await expect(
+        f.views.save({ name: "Updated", view }, generated, f.signal),
+      ).rejects.toThrow("pending or protected");
+      expect(update).not.toHaveBeenCalled();
+      expect(f.views.pendingMutations()).toEqual([]);
+    },
+  );
+
+  it.each([
+    `views:
+  - &shared
+    type: tasknotesPlanner
+    name: Launch
+    options:
+      zoom: 3
+  - *shared
+`,
+    `views:
+  - type: tasknotesPlanner
+    name: Launch
+    options: &shared
+      zoom: 3
+  - type: table
+    name: Sibling
+    options: *shared
+`,
+  ])(
+    "refuses selected YAML sharing before source capture (%#)",
+    async (aliased) => {
+      const f = await fixture(false, { source: aliased });
+      const [view] = await f.views.list(f.signal);
+      const update = vi.spyOn(f.client.views, "updateSource");
+      await expect(
+        f.views.save({ name: "Updated", view }, generated, f.signal),
+      ).rejects.toThrow();
+      expect(update).not.toHaveBeenCalled();
+      expect(f.views.pendingMutations()).toEqual([]);
+      expect((await f.client.views.getSourceRecord(f.seeded.id)).document).toBe(
+        aliased,
+      );
+    },
+  );
 });

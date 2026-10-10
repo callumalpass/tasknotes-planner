@@ -1,6 +1,14 @@
 import { MdbaseError, type MdbaseClient, type wire } from "@mdbase-dev/sdk";
 import type { AppBasesDescriptor } from "@mdbase-dev/sdk/app-host";
-import { isMap, isSeq, parse, parseDocument } from "yaml";
+import {
+  isAlias,
+  isMap,
+  isScalar,
+  isSeq,
+  parse,
+  parseDocument,
+  visit,
+} from "yaml";
 import type {
   PendingPlannerMutation,
   PlannerView,
@@ -43,6 +51,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     const captureTimezone = timezone();
     const descriptors = new Map<string, AppBasesDescriptor>();
     const views: PlannerView[] = [];
+    const sourceRecords = new Map<string, wire.RecordView>();
     let continuation: Uint8Array | null = null;
     let cut: { revision: string; clock: wire.OpClock } | undefined;
     let previous: AppBasesDescriptor | undefined;
@@ -85,6 +94,23 @@ export class NextPlannerViews implements NextPlannerViewAccess {
           continue;
         const key = `${descriptor.record}#${descriptor.ordinal}`;
         const source = await this.source(descriptor, signal, captureTimezone);
+        const record =
+          sourceRecords.get(descriptor.record) ??
+          (await this.client.get(
+            descriptor.record,
+            { effective: true },
+            signal,
+          ));
+        signal.throwIfAborted();
+        if (
+          record.id !== descriptor.record ||
+          record.path !== descriptor.path ||
+          record.revision !== descriptor.sourceRevision
+        )
+          throw new Error(
+            "The saved view source changed while loading. Refresh Planner.",
+          );
+        sourceRecords.set(record.id, record);
         const value = object(parse(source));
         if (!Array.isArray(value.views))
           throw new Error("The Base source has no view declarations.");
@@ -104,7 +130,9 @@ export class NextPlannerViews implements NextPlannerViewAccess {
           name: descriptor.name ?? "Planner",
           format: "obsidian.base",
           revision: descriptor.sourceRevision,
-          writable: true,
+          writable:
+            hasSourceGrant(this.client, "records.edit") &&
+            writableState(record),
           options: {
             ...(typeof options.zoom === "number" &&
             Number.isFinite(options.zoom)
@@ -192,6 +220,10 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     signal: AbortSignal,
   ): Promise<PlannerView> {
     signal.throwIfAborted();
+    assertSourceGrant(
+      this.client,
+      input.view ? "records.edit" : "records.create",
+    );
     if (this.pending.size)
       throw new Error(
         "Recover the pending view write before saving another view.",
@@ -248,6 +280,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       throw new Error(
         "Recover the pending view write before saving another view.",
       );
+    assertSourceGrant(this.client, base ? "records.edit" : "records.create");
     const mutationId = crypto.randomUUID();
     const mutation: SourceMutation = {
       requestId: mutationId,
@@ -417,12 +450,38 @@ function plannerType(value: unknown): boolean {
   return value === "tasknotesPlanner" || value === "tasknotes.planner";
 }
 
+function hasSourceGrant(
+  client: MdbaseClient,
+  capability: "records.create" | "records.edit",
+): boolean {
+  const grant = client.hello.grant;
+  return (
+    grant.role !== "viewer" &&
+    grant.capabilities.includes(capability) &&
+    !client.status.incidents.some((incident) => incident.kind === "read_only")
+  );
+}
+
+function assertSourceGrant(
+  client: MdbaseClient,
+  capability: "records.create" | "records.edit",
+): void {
+  if (!hasSourceGrant(client, capability))
+    throw new Error(
+      "The supplied session does not support this source write. No operation was captured.",
+    );
+}
+
+function writableState(record: wire.RecordView): boolean {
+  return (
+    record.state.state === "confirmed" &&
+    record.state.hold === undefined &&
+    (record.state.unresolved ?? 0) === 0
+  );
+}
+
 function assertWritable(record: wire.RecordView): void {
-  if (
-    record.state.state !== "confirmed" ||
-    record.state.hold !== undefined ||
-    (record.state.unresolved ?? 0) !== 0
-  )
+  if (!writableState(record))
     throw new Error(
       "The view source is pending or protected. Keep its original operation for recovery.",
     );
@@ -452,6 +511,18 @@ function replaceSelected(
     throw new Error(
       "The Base source changed its original selected declaration.",
     );
+  // An anchored selected map/options/scalar may be referenced by a sibling or
+  // root metadata. Reject sharing before mutation/capture rather than changing
+  // another declaration through YAML's object identity semantics.
+  visit(selected, (_key, node) => {
+    if (
+      isAlias(node) ||
+      ((isMap(node) || isSeq(node) || isScalar(node)) && node.anchor)
+    )
+      throw new Error(
+        "The selected Base declaration uses anchors or aliases and cannot be edited safely.",
+      );
+  });
   selected.set("name", replacement.name);
   for (const key of ["filters", "order", "sort"]) {
     if (replacement[key] === undefined) selected.delete(key);

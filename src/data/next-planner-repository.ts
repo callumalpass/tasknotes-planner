@@ -51,7 +51,14 @@ export class NextPlannerRepository implements PlannerRepository {
   private configurations = new Map<string, TaskTypeConfiguration>();
   private readonly pending = new Map<
     string,
-    PendingPlannerMutation & { recordId?: string }
+    PendingPlannerMutation & {
+      recordId?: string;
+      identity?: {
+        id: string;
+        providerType: string;
+        configurations: ReadonlyMap<string, TaskTypeConfiguration>;
+      };
+    }
   >();
   private readonly listeners = new Set<() => void>();
   private changesWatch: ReturnType<MdbaseClient["watchChanges"]> | undefined;
@@ -351,6 +358,11 @@ export class NextPlannerRepository implements PlannerRepository {
     const signal = this.signal();
     const config = this.configuration(item);
     const configurations = this.configurations;
+    const identity = {
+      id: item.id,
+      providerType: config.typeName,
+      configurations,
+    };
     const generation = this.generation;
     const record = await this.client.get(
       { path: item.path },
@@ -360,7 +372,7 @@ export class NextPlannerRepository implements PlannerRepository {
     signal.throwIfAborted();
     if (
       !record.types.includes(config.typeName) ||
-      task(record, configurations).id !== item.id
+      task(record, configurations).id !== identity.id
     )
       throw new Error(
         "This task changed its identity. Reload it before editing.",
@@ -392,6 +404,7 @@ export class NextPlannerRepository implements PlannerRepository {
       operation: "update",
       createdAt: new Date().toISOString(),
       recordId: record.id,
+      identity,
     });
     // Even an internal SDK response error can follow native capture. Keep the
     // original identity until an actual receipt and current readback qualify it.
@@ -406,7 +419,10 @@ export class NextPlannerRepository implements PlannerRepository {
     if (!saved)
       throw new Error("The saved task's native target is unavailable.");
     const result = task(saved, configurations);
-    if (result.id !== item.id || result.providerType !== config.typeName)
+    if (
+      result.id !== identity.id ||
+      result.providerType !== identity.providerType
+    )
       throw new Error(
         "The saved task changed its portable identity. Refresh Planner.",
       );
@@ -438,7 +454,8 @@ export class NextPlannerRepository implements PlannerRepository {
         "This change has a conflict. Resolve it in TaskNotes before planning.",
       );
     }
-    const target = this.pending.get(mutation)?.recordId;
+    const intent = this.pending.get(mutation);
+    const target = intent?.recordId;
     if (!target) return undefined;
     const record = await this.client.get(target, { effective: true }, signal);
     signal.throwIfAborted();
@@ -451,6 +468,19 @@ export class NextPlannerRepository implements PlannerRepository {
       throw new Error(
         "The current task is pending or protected. Keep the original write for recovery before reporting it as saved.",
       );
+    // Live recovery must apply the original portable identity/provider witness,
+    // not qualify the same rejected readback using only native UUID/state.
+    // Restored intents do not invent this lost application metadata.
+    if (intent?.identity) {
+      const saved = task(record, intent.identity.configurations);
+      if (
+        saved.id !== intent.identity.id ||
+        saved.providerType !== intent.identity.providerType
+      )
+        throw new Error(
+          "The saved task changed its portable identity. Refresh Planner.",
+        );
+    }
     return record;
   }
 
