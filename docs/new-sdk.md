@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`3800107992f345cbf62665b945a5073de34e07b6` (first ported at `e519009a`, then `563dc868`, `ab00e5eb`, `8a557ad6`, `7193fd0d` and `d53d7d76`, `df091839`). `createPlannerApplication`
+`2e2ae687f96d0a0c074ef6bc46bb77b97089f325`, distinct `sdk-dev-2e2ae687-n1` cut (first ported at `e519009a`, then `563dc868`, `ab00e5eb`, `8a557ad6`, `7193fd0d` and `d53d7d76`, `df091839`). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -139,17 +139,17 @@ builds keep the existing Connect runtime because the SDK refuses production
 (`application_production_trust_unavailable`). A LAB build also needs
 `TASKNOTES_PLANNER_URL` set to its served origin so the manifest homepage matches.
 `vite.config.ts` excludes the SDK from dev pre-bundling and emits ES workers.
-The production build passes at `38001079`: it emits the SDK Worker,
+The previous production build passed at `38001079`: it emits the SDK Worker,
 `runtime-lab.wasm`, `sqlite3.wasm` and `sqlite3.js` once each, and the wasm
 matches the SDK's asset pins. Live LAB registration and readiness have not been
 exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The development intake at `38001079` is installed through normal file
-dependencies on both its SDK archive and its original beta129 protocol archive
-(source `d765e675c3da`). The protocol tar must also be in the consumer's `vendor/` directory;
-its transitive file path is consumer-relative. There are no aliases, API casts,
+The distinct development intake `sdk-dev-2e2ae687-n1` is installed through a
+normal file dependency. It bundles the original beta129 protocol archive
+(source `d765e675c3da`); Planner retains its direct original protocol dependency
+for legacy packages. Both original archives remain immutable. There are no aliases, API casts,
 private source copies or package rewrites. This intake permits source typechecking,
 not release or native qualification. UI lifecycle stand-ins and MemoryReplica
 rendering tests do not qualify runtime, native initialization, registration or
@@ -160,9 +160,9 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `3800107992f345cbf62665b945a5073de34e07b6`: 3530428-byte
-SDK archive, SHA256
-`d2c04aeb38932d43fba0601ab385f325898b3794845cee5322a42ca64ad412e4`
+SDK source `2e2ae687f96d0a0c074ef6bc46bb77b97089f325`, distinct `n1` cut:
+4208744-byte SDK archive, SHA256
+`58bc19022164eed1ef2236e392786db7fba6447d32b9bc3f2163c247d1c42faf`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
 plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
@@ -170,7 +170,9 @@ native runtime/SQLite wasm, `describe({ definitions })`, collection selection
 and `files.grant`; adds contract-scoped `getContract` and contract
 create/update/delete/rename, `files.watch` and `createType` in `df091839`;
 MemoryReplica serves contract-scoped records from declared `MemoryContract`s in
-`38001079`).
+`38001079`; `n1` adds atomic contract body/field updates and promotion, explicit
+fixture digests, and the original 3462973-byte native runtime matching
+`6762b92e4b57b1a4df965c7991a064efe05eb950a66ec332e0504f73a8e42b72`).
 Its original protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces
