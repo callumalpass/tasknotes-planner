@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`4b9553819ddb769ff1487170c05494321d23ab8b`, original `sdk-dev-4b955381` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
+`6a576a5f25231333bd899274ad6fed91f54a19ab`, original `sdk-dev-6a576a5f` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -150,12 +150,11 @@ exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The original DEV/LAB intake `sdk-dev-4b955381` is installed through a
+The original DEV/LAB intake `sdk-dev-6a576a5f` is installed through a
 normal file dependency. It bundles the original beta129 protocol archive
 (`3c14fc913a80`); Planner retains its direct `d765e675c3da` protocol dependency
-for legacy packages. The exact cut's co0648 warning covers only its unused extra
-protocol archive (`dfc5db0d…`), not a successor exception. Both original archives
-remain immutable. There are no aliases, API casts,
+for legacy packages. This archive has no vendor warnings; the earlier unused
+protocol exception is not carried forward. Both original archives remain immutable. There are no aliases, API casts,
 private source copies or package rewrites. This intake permits source typechecking,
 not release or native qualification. UI lifecycle stand-ins and MemoryReplica
 rendering tests do not qualify runtime, native initialization, registration or
@@ -166,9 +165,9 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `4b9553819ddb769ff1487170c05494321d23ab8b`, original `4b` cut:
-4292587-byte SDK archive, SHA256
-`9874074d6a68287780de2092a069c1cb4e81d3558e432b719b7525974eb6b0ad`
+SDK source `6a576a5f25231333bd899274ad6fed91f54a19ab`, original `6a` cut:
+4289200-byte SDK archive, SHA256
+`00ee3484b4d70b9df4b9fab72c6fcadf24476c1b5834eef6d4d9a4a9281ec56f`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
 plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
@@ -178,9 +177,10 @@ create/update/delete/rename, `files.watch` and `createType` in `df091839`;
 MemoryReplica serves contract-scoped records from declared `MemoryContract`s in
 `38001079`; `n1` adds atomic contract body/field updates and promotion, explicit
 fixture digests; `4b` delivers public error/status helpers and portable/native-origin
-sign-in APIs, with the original 3533579-byte native runtime matching
-`38ca6f006aef7675ebe16abb981c7ba59fe0c27c287d78ee0b845c26aff37ba8`).
-The security/phase-2 successor remains a separate future pin.
+sign-in APIs; `6a` includes registration-refusal guidance, Private-collection
+availability reasons and collection deletion APIs, with the original 3553905-byte
+native runtime matching
+`08bb2dfcfd48e663147a7d1f3ebf2728b81bd82ac59183307c2cd7bc30c9ab67`).
 The direct legacy protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces

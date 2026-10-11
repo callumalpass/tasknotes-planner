@@ -16,6 +16,8 @@ import {
   type MdbaseApplicationSnapshot,
   type MdbaseClient,
 } from "@mdbase-dev/sdk";
+import { createApplicationFixture } from "@mdbase-dev/sdk/testing";
+import manifest from "../generated-mdbase-app.json";
 import { nativePlannerFixture } from "../test/native-planner-fixture";
 import { SdkConnectionGate, type PlannerSdk } from "./sdk-connection-gate";
 import { App } from "./app";
@@ -25,6 +27,8 @@ vi.mock("./connection-gate", () => {
     "Native Planner must not import/instantiate the legacy session",
   );
 });
+
+const publicFixtures: { close(): void }[] = [];
 
 // Typed lifecycle stand-ins only; the actual SDK MemoryReplica/client→Planner
 // integration is in planner.native.test.tsx. No production session substitute.
@@ -61,12 +65,29 @@ function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
     },
     ...initial,
   };
+  // New setup/delete ports remain the original public fixture implementations,
+  // not no-op methods added merely to satisfy the application type.
+  const publicFixture = createApplicationFixture({
+    declaration: {
+      id: manifest.id,
+      name: manifest.name,
+      origin: new URL(manifest.homepage).origin,
+      environment: "lab",
+      manifest,
+    },
+    initialSnapshot: snapshot,
+    connections: [],
+  });
+  publicFixtures.push(publicFixture.controls);
+  const original = publicFixture.entry.application();
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<MdbaseApplicationSnapshot>) => {
     snapshot = { ...snapshot, ...patch };
     for (const listener of listeners) listener();
   };
   const application: MdbaseApplication = {
+    setup: original.setup,
+    deleteCollection: original.deleteCollection,
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
@@ -142,6 +163,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.close();
+  for (const fixture of publicFixtures.splice(0)) fixture.close();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   if (originalScrollTo)
