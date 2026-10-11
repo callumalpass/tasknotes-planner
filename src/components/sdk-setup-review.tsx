@@ -58,7 +58,10 @@ export function SdkSetupReview({
   useEffect(() => {
     const controller = new AbortController();
     scope.current = controller;
-    queueMicrotask(() => void plan());
+    // StrictMode replays effects; only the surviving scope plans.
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void plan();
+    });
     return () => controller.abort();
   }, [plan]);
 
