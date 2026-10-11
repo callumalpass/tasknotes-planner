@@ -1,11 +1,11 @@
 {
   "package": "@mdbase-dev/sdk",
   "version": "0.0.0",
-  "artifact": "mdbase-dev-sdk-563dc868.tgz",
-  "sourceCommit": "563dc868fd5847abe272bd8cead1b044cd46fbe0",
+  "artifact": "mdbase-dev-sdk-ab00e5eb.tgz",
+  "sourceCommit": "ab00e5ebdad281119776837b89ad3bd20541e861",
   "label": "dev intake, not release-qualified",
-  "sha256": "8892aaff198437ad51d490dca86faad893275d991f6f848f758e457f4e7a1250",
-  "integrity": "sha512-1veJNEBzhCS24NU/N7md3jG/GD84yVfQF3E4H2tsREaBG/eO6jES6Q5Uwqtr9JweIO/YNu6AVyPlT2FmE6WiAw==",
+  "sha256": "58ab04f935a8b7ac0470cb568a7928e5c1cd7e20ac505361c1dbd7c8328358eb",
+  "integrity": "sha512-zSYyTQVfi5JXP0/hRZlwANSwDLvGul0FSIwVOK3fz3u+jAn8A2TrFUEFbAiLfPbOC2TRFhRKVQKO38wyjxEo/g==",
   "releaseQualified": false,
   "localDependencies": [
     {

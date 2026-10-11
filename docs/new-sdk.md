@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`563dc868fd5847abe272bd8cead1b044cd46fbe0` (first ported at `e519009a`). `createPlannerApplication`
+`ab00e5ebdad281119776837b89ad3bd20541e861` (first ported at `e519009a`, then `563dc868`). `createPlannerApplication`
 supplies only the unchanged manifest, name, origin, environment and a caller's
 actual registered application ID; no prototype UUID or storage override is used.
 `App` accepts that SDK entry optionally. Native mode does not import or instantiate
@@ -134,7 +134,7 @@ existing Connect session; the switch to the shared singleton, its registered
 application ID and environment are deliberately not wired here. Old local data and pending writes need no cutover handoff for any app;
 ongoing new-SDK recovery remains mandatory.
 
-The original development intake at `563dc868` is installed through normal file
+The development intake at `ab00e5eb` is installed through normal file
 dependencies on both its SDK archive and its original beta129 protocol archive
 (source `d765e675c3da`). The protocol tar must also be in the consumer's `vendor/` directory;
 its transitive file path is consumer-relative. There are no aliases, API casts,
@@ -148,9 +148,11 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `563dc868fd5847abe272bd8cead1b044cd46fbe0`: original 1359076-byte
+SDK source `ab00e5ebdad281119776837b89ad3bd20541e861`: 1392332-byte
 SDK archive, SHA256
-`8892aaff198437ad51d490dca86faad893275d991f6f848f758e457f4e7a1250`.
+`58ab04f935a8b7ac0470cb568a7928e5c1cd7e20ac505361c1dbd7c8328358eb`
+(public application entry types unchanged from `563dc868`; adds SDK collection
+selection and `files.grant`).
 Its original protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces
