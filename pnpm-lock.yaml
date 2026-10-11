@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz
+  "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
   "@mdbase-dev/connect-sync": file:vendor/mdbase-dev-connect-sync-0.1.0-beta.96-56ed32ffde05.tgz
 
 importers:
@@ -21,8 +21,8 @@ importers:
         specifier: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
         version: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
       "@mdbase-dev/sdk":
-        specifier: file:vendor/mdbase-dev-sdk-dev-e519009a.tgz
-        version: file:vendor/mdbase-dev-sdk-dev-e519009a.tgz
+        specifier: file:vendor/mdbase-dev-sdk-563dc868.tgz
+        version: file:vendor/mdbase-dev-sdk-563dc868.tgz
       "@tasknotes/model":
         specifier: file:vendor/tasknotes-model-0.3.0-rc.11.tgz
         version: file:vendor/tasknotes-model-0.3.0-rc.11.tgz
@@ -43,8 +43,8 @@ importers:
         specifier: 10.0.1
         version: 10.0.1(eslint@10.7.0)
       "@mdbase-dev/connect-protocol":
-        specifier: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz
-        version: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz
+        specifier: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
+        version: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
       "@playwright/test":
         specifier: 1.61.1
         version: 1.61.1
@@ -485,11 +485,11 @@ packages:
         integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==,
       }
 
-  "@mdbase-dev/connect-protocol@file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz":
+  "@mdbase-dev/connect-protocol@file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz":
     resolution:
       {
-        integrity: sha512-YTVxr5y8Y/RtMxkm732JTl1r1HGnZeswWLNRJrWvyeEzeMRubXE7pHjY/33s3GcwyQkwyrmsgeRQPltXGPpMEQ==,
-        tarball: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz,
+        integrity: sha512-PFG1qmAzmcyJjmZLmGz4eoOOZRDgvTvDZATf6IGBccNHRc1eGZtMm7ZUA7gNAxuO5KerrN6mDIB9qQnpojyOAg==,
+        tarball: file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz,
       }
     version: 0.1.0-beta.129
 
@@ -501,11 +501,11 @@ packages:
       }
     version: 0.1.0-beta.96
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-e519009a.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-563dc868.tgz":
     resolution:
       {
-        integrity: sha512-K3+HfwGmfJIE7gb149BhsG3k0WvvMcWkX40JdjmtGacpcfp4lGAxCJYH55DRAsPI7vxZvm763mUNHrQZFipuSw==,
-        tarball: file:vendor/mdbase-dev-sdk-dev-e519009a.tgz,
+        integrity: sha512-1veJNEBzhCS24NU/N7md3jG/GD84yVfQF3E4H2tsREaBG/eO6jES6Q5Uwqtr9JweIO/YNu6AVyPlT2FmE6WiAw==,
+        tarball: file:vendor/mdbase-dev-sdk-563dc868.tgz,
       }
     version: 0.0.0
     engines: { node: ">=20" }
@@ -2561,19 +2561,20 @@ snapshots:
       "@jridgewell/resolve-uri": 3.1.2
       "@jridgewell/sourcemap-codec": 1.5.5
 
-  "@mdbase-dev/connect-protocol@file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz":
+  "@mdbase-dev/connect-protocol@file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz":
     dependencies:
+      "@noble/hashes": 2.4.0
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       yaml: 2.9.1
 
   "@mdbase-dev/connect@file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz":
     dependencies:
-      "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz
+      "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-e519009a.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-563dc868.tgz":
     dependencies:
-      "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz
+      "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
       "@noble/ciphers": 2.4.0
       "@noble/curves": 2.4.0
       "@noble/hashes": 2.4.0
