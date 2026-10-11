@@ -20,9 +20,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const todoFields = {
+  id: "id",
+  title: "headline",
+  status: "state",
+  priority: "urgency",
+  projects: "teams",
+  scheduled: "starts",
+  due: "ends",
+  blockedBy: "dependencies",
+  completedDate: "finished",
+};
+
 async function fixture(options: { pending?: boolean } = {}) {
   const replica = new MemoryReplica({
     confirmDelayMs: options.pending ? null : 0,
+    contracts: [
+      {
+        id: "tasknotes.task",
+        version: TASKNOTES_SPEC_VERSION,
+        type: "todo",
+        fields: todoFields,
+      },
+    ],
   });
   const record = replica.seed({
     path: "work/plan.md",
@@ -70,19 +90,7 @@ async function fixture(options: { pending?: boolean } = {}) {
           {
             contract: "tasknotes.task",
             version: TASKNOTES_SPEC_VERSION,
-            fields: new Map(
-              Object.entries({
-                id: "id",
-                title: "headline",
-                status: "state",
-                priority: "urgency",
-                projects: "teams",
-                scheduled: "starts",
-                due: "ends",
-                blockedBy: "dependencies",
-                completedDate: "finished",
-              }),
-            ),
+            fields: new Map(Object.entries(todoFields)),
             binding: toValue({
               status: {
                 default: "open",
@@ -186,7 +194,7 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     await expect(f.repo.load()).rejects.toThrow("same portable identity");
   });
 
-  it("maps canonical schedule fields to the genuine provider and waits for confirmation/readback", async () => {
+  it("writes canonical schedule fields through the task contract and waits for confirmation/readback", async () => {
     const f = await fixture();
     const [item] = (await f.repo.load()).tasks;
     const update = vi.spyOn(f.client, "update");
@@ -199,7 +207,12 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ id: f.record.id }),
       expect.objectContaining({
-        patch: { starts: "2026-10-10", ends: "2026-10-12" },
+        contract: {
+          id: "tasknotes.task",
+          version: TASKNOTES_SPEC_VERSION,
+          type: "todo",
+        },
+        patch: { scheduled: "2026-10-10", due: "2026-10-12" },
         ifRevision: expect.any(String),
       }),
       expect.objectContaining({
@@ -212,6 +225,9 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
       { effective: true },
       expect.any(AbortSignal),
     );
+    const stored = await f.client.get(f.record.id, { effective: true });
+    expect(stored.frontmatter.get("starts")).toBe("2026-10-10");
+    expect(stored.frontmatter.get("ends")).toBe("2026-10-12");
     expect(f.repo.pendingMutations()).toEqual([]);
   });
 

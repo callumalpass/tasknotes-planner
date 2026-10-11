@@ -168,7 +168,9 @@ plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
 native runtime/SQLite wasm, `describe({ definitions })`, collection selection
 and `files.grant`; adds contract-scoped `getContract` and contract
-create/update/delete/rename, `files.watch` and `createType` in `df091839`).
+create/update/delete/rename, `files.watch` and `createType` in `df091839`;
+MemoryReplica serves contract-scoped records from declared `MemoryContract`s in
+`38001079`).
 Its original protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces
@@ -194,8 +196,14 @@ per-app trust/origin/runtime/session/operation acceptance or a published release
 The earlier SDK807 `5ba1314b` archive remains held and must not be reused; no
 browser/session path is enabled by this dependency update.
 
+Task edits are written through the `tasknotes.task` contract
+(`update(record, {contract, patch, unset, ifRevision})`): Planner sends contract
+fields and Core maps them to the type's record fields. Task reads still map the
+record fields client-side.
+
 Unit tests use the SDK's MemoryReplica for record/receipt frames, with synthetic
-native contract metadata and mocked AppBases results. SDK811's shared synthetic
+native contract metadata, a declared `tasknotes.task` `MemoryContract` for
+contract writes, and mocked AppBases results. SDK811's shared synthetic
 parser now handles `create.document`; the source-create test no longer installs
 an app-side fixture bridge and still asserts the exact document submission. These tests are not LAB, native renderer,
 source-parser, sign-in, or end-to-end evidence. Run `pnpm verify` and

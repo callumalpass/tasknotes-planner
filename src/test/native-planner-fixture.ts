@@ -4,11 +4,33 @@ import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
 import { vi } from "vitest";
 
+const taskFields = {
+  id: "id",
+  title: "title",
+  status: "status",
+  priority: "priority",
+  projects: "projects",
+  scheduled: "scheduled",
+  due: "due",
+  blockedBy: "blockedBy",
+  completedDate: "completedDate",
+};
+
 /** Actual public SDK codec/client over its testing replica. Catalog and native
  * Bases discovery are explicit stand-ins, never native/readiness qualification.
  * The caller owns and closes this test client; borrowed views must not close it. */
 export async function nativePlannerFixture(title = "Plan the SDK port") {
-  const replica = new MemoryReplica({ confirmDelayMs: 0 });
+  const replica = new MemoryReplica({
+    confirmDelayMs: 0,
+    contracts: [
+      {
+        id: "tasknotes.task",
+        version: TASKNOTES_SPEC_VERSION,
+        type: "task",
+        fields: taskFields,
+      },
+    ],
+  });
   const record = replica.seed({
     path: "tasks/launch.md",
     types: ["task"],
@@ -43,19 +65,7 @@ export async function nativePlannerFixture(title = "Plan the SDK port") {
           {
             contract: "tasknotes.task",
             version: TASKNOTES_SPEC_VERSION,
-            fields: new Map(
-              Object.entries({
-                id: "id",
-                title: "title",
-                status: "status",
-                priority: "priority",
-                projects: "projects",
-                scheduled: "scheduled",
-                due: "due",
-                blockedBy: "blockedBy",
-                completedDate: "completedDate",
-              }),
-            ),
+            fields: new Map(Object.entries(taskFields)),
             binding: toValue({
               status: {
                 default: "open",

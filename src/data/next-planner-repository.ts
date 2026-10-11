@@ -387,14 +387,17 @@ export class NextPlannerRepository implements PlannerRepository {
       );
     if (generation !== this.generation) throw changed();
     const fields = patch(record, config);
-    const mapped: Record<string, PlainValue> = {};
+    // Contract fields go to the replica, which maps them to this type's record
+    // fields (nested fields merge). Null removes a field.
+    const changes: Record<string, PlainValue> = {};
+    const unset: string[] = [];
     for (const [role, value] of Object.entries(fields)) {
-      const field = config.fields[role];
-      if (!field)
+      if (!config.fields[role])
         throw new Error(`This TaskNotes type does not expose ${role}.`);
-      mapped[field] = value as PlainValue;
+      if (value === null) unset.push(role);
+      else changes[role] = value as PlainValue;
     }
-    if (!Object.keys(mapped).length) return task(record, configurations);
+    if (!Object.keys(fields).length) return task(record, configurations);
     // Another inspector or view save may have finished its read concurrently.
     if (this.savingView || this.pendingMutations().length)
       throw new Error("Check the pending write before making another change.");
@@ -410,7 +413,16 @@ export class NextPlannerRepository implements PlannerRepository {
     // original identity until an actual receipt and current readback qualify it.
     const write = await this.client.update(
       record,
-      { patch: mapped, ifRevision: record.revision },
+      {
+        contract: {
+          id: "tasknotes.task",
+          version: TASKNOTES_SPEC_VERSION,
+          type: config.typeName,
+        },
+        patch: changes,
+        ...(unset.length ? { unset } : {}),
+        ifRevision: record.revision,
+      },
       { mutationId, signal },
     );
     if (write.mutationId !== mutationId)
