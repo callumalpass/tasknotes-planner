@@ -317,12 +317,69 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     },
   );
 
+  it.each([
+    "readiness problem",
+    "assessment problem",
+    "incompatible",
+    "unknown",
+  ] as const)(
+    "settled %s offers an SDK recovery action instead of endless Opening",
+    async (state) => {
+      const h = await readyFixture();
+      const initial = h.application.getSnapshot().readiness;
+      const problem = { code: "private-readiness-diagnostic" };
+      h.publish({
+        readiness: {
+          ...initial,
+          assessment:
+            state === "unknown"
+              ? null
+              : {
+                  status: state === "incompatible" ? "incompatible" : "ready",
+                  problem: state === "assessment problem" ? problem : null,
+                },
+          problem: state === "readiness problem" ? problem : null,
+        },
+      });
+      render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+      await act(async () => undefined);
+      expect(screen.queryByText(/Opening Native work/)).toBeNull();
+      expect(screen.queryByText(/private-readiness-diagnostic/)).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
+      expect(h.client.describe).not.toHaveBeenCalled();
+      expect(h.client.listAppBasesViews).not.toHaveBeenCalled();
+      if (state === "incompatible") {
+        expect(screen.getByRole("alert")).toHaveTextContent("isn't compatible");
+        fireEvent.click(
+          screen.getByRole("button", { name: "Choose another collection" }),
+        );
+        await waitFor(() =>
+          expect(h.application.chooseAnother).toHaveBeenCalledOnce(),
+        );
+        expect(h.application.assess).not.toHaveBeenCalled();
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+        await waitFor(() =>
+          expect(h.application.assess).toHaveBeenCalledOnce(),
+        );
+        expect(
+          vi.mocked(h.application.assess).mock.calls[0]?.[0]?.signal,
+        ).toBeInstanceOf(AbortSignal);
+      }
+      expect(h.application.configure).not.toHaveBeenCalled();
+      expect(h.application.close).not.toHaveBeenCalled();
+    },
+  );
+
   it("a retired connection cannot retain the ledger merely because its old readiness says ready", async () => {
     const h = await readyFixture();
     render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
     await screen.findByRole("button", { name: "Complete Plan the SDK port" });
     vi.mocked(h.connection.isCurrent).mockReturnValue(false);
     await act(async () => h.publish({}));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "connection to this collection has changed",
+    );
     expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Complete Plan the SDK port" }),
@@ -658,7 +715,8 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(h.sdk.connection).toHaveBeenCalledWith("selected");
     expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Opening Selected work",
+      "hasn't been checked yet",
     );
+    expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
   });
 });

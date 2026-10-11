@@ -124,9 +124,13 @@ SDK reports `setup_required` (status or readiness assessment), the gate offers
 **Set up TaskNotes Planner**, which calls only the SDK's `configure()` with the
 caller's signal; the SDK configures the current scope from Planner's canonical
 declaration. Planner keeps no setup engine and never infers READY from a
-configure result: the ledger still waits for current SDK readiness. The SDK's
-`assess()` is not called by the UI; readiness arrives through the snapshot.
-Registered binding and popup reopen/expiry helpers remain producer work.
+configure result: the ledger still waits for current SDK readiness. A failed or
+missing settled readiness check offers **Check again**, which calls the SDK's
+`assess()` with the current caller signal. Incompatible collections and retired
+connections show a clear explanation and **Choose another collection**, rather
+than an endless Opening message. Active SDK checks remain loading states; no
+repository is allocated until aggregate readiness and the original connection
+are current. Registered binding and popup reopen/expiry helpers remain producer work.
 
 A link that requests an unapproved collection (`selection.state`
 `approval_required`) or an invalid one offers **Approve this collection** or

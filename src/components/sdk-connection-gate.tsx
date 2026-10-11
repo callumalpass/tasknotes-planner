@@ -147,9 +147,31 @@ function SdkApplicationView({
     snapshot.status === "authorizing" || selection === "approving";
   const approval = !closed && selection === "approval_required";
   const invalid = !closed && selection === "invalid";
+  const readinessProblem =
+    snapshot.readiness.problem !== null ||
+    snapshot.readiness.assessment?.problem != null;
+  const incompatible = snapshot.readiness.assessment?.status === "incompatible";
   const opening =
-    ["starting", "opening"].includes(snapshot.status) ||
-    snapshot.readiness.checking;
+    !interrupted &&
+    !readinessProblem &&
+    !incompatible &&
+    (["starting", "opening"].includes(snapshot.status) ||
+      snapshot.readiness.checking);
+  const unchecked =
+    snapshot.status === "ready" &&
+    !opening &&
+    snapshot.readiness.assessment === null;
+  const retired =
+    snapshot.status === "ready" &&
+    !opening &&
+    !readinessProblem &&
+    snapshot.readiness.assessment?.status === "ready";
+  const retryReadiness =
+    !closed &&
+    !unavailable &&
+    !waiting &&
+    !incompatible &&
+    (readinessProblem || unchecked);
   const setup =
     !closed &&
     !unavailable &&
@@ -162,7 +184,13 @@ function SdkApplicationView({
     : signIn?.accountProvider === "github" && signIn.accountLogin
       ? `Signed in as ${signIn.accountLogin} on GitHub`
       : null;
-  const error = interrupted || snapshot.status === "blocked" || invalid;
+  const error =
+    interrupted ||
+    snapshot.status === "blocked" ||
+    invalid ||
+    readinessProblem ||
+    incompatible ||
+    retired;
   const message = unavailable
     ? "Opening collections isn't available in this build yet."
     : closed
@@ -173,13 +201,21 @@ function SdkApplicationView({
           ? "This link doesn't name a collection Planner can open."
           : approval
             ? "Planner isn't approved for the collection in this link yet."
-            : setup
-              ? "This collection needs TaskNotes setup before planning."
-              : error
-                ? "Planner could not open this collection. Please try again."
-                : opening || snapshot.status === "ready"
-                  ? `Opening ${selected?.displayName ?? "your collection"}…`
-                  : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
+            : incompatible
+              ? "This collection isn't compatible with TaskNotes Planner. Choose another collection."
+              : readinessProblem
+                ? "Planner couldn't check this collection. Check again or choose another collection."
+                : unchecked
+                  ? "This collection hasn't been checked yet. Check again before planning."
+                  : retired
+                    ? "The connection to this collection has changed. Choose the collection again."
+                    : setup
+                      ? "This collection needs TaskNotes setup before planning."
+                      : error
+                        ? "Planner could not open this collection. Please try again."
+                        : opening || snapshot.status === "ready"
+                          ? `Opening ${selected?.displayName ?? "your collection"}…`
+                          : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
 
   return (
     <main className="welcome">
@@ -194,7 +230,13 @@ function SdkApplicationView({
           {message}
         </p>
         <div className="welcome-actions">
-          {!closed && !unavailable && !waiting && !opening ? (
+          {!closed &&
+          !unavailable &&
+          !waiting &&
+          !opening &&
+          !retryReadiness &&
+          !incompatible &&
+          !retired ? (
             <button
               className="primary-action"
               type="button"
@@ -204,6 +246,16 @@ function SdkApplicationView({
               }
             >
               Sign in
+            </button>
+          ) : null}
+          {retryReadiness ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={working}
+              onClick={() => void act((options) => application.assess(options))}
+            >
+              Check again
             </button>
           ) : null}
           {approval ? (
@@ -259,7 +311,13 @@ function SdkApplicationView({
               Forget collection
             </button>
           ) : null}
-          {(snapshot.selectedCollectionId && !closed) || approval || invalid ? (
+          {((snapshot.selectedCollectionId ||
+            incompatible ||
+            retired ||
+            retryReadiness) &&
+            !closed) ||
+          approval ||
+          invalid ? (
             <button
               className="text-action"
               type="button"
