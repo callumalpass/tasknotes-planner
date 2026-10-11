@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { MdbaseClient, MdbaseConnect } from "@mdbase-dev/sdk";
+import type { MdbaseApplicationEntry, MdbaseClient } from "@mdbase-dev/sdk";
 import { NextPlannerRepository } from "../data/next-planner-repository";
 import { Planner } from "./planner";
 
-/** Only the actual public entry's two methods, so test fixtures need no private
- * constructor state. This does not wrap or replace the borrowed records client. */
-export type PlannerSdk = Pick<MdbaseConnect, "application" | "connection">;
+/** The SDK's public structural entry (production: `MdbaseConnect`), so test
+ * fixtures need no private constructor state. This does not wrap or replace the
+ * borrowed records client. */
+export type PlannerSdk = MdbaseApplicationEntry;
 
 const viewKeys = new WeakMap<PlannerSdk, number>();
 let nextViewKey = 0;
@@ -145,6 +146,11 @@ function SdkApplicationView({
   const opening =
     ["starting", "opening"].includes(snapshot.status) ||
     snapshot.readiness.checking;
+  const setup =
+    !closed &&
+    !unavailable &&
+    (snapshot.status === "setup_required" ||
+      snapshot.readiness.assessment?.status === "setup_required");
   const paired = !closed && snapshot.signIn?.state === "paired";
   const signIn = paired ? snapshot.signIn : null;
   const identity = signIn?.accountEmail
@@ -159,7 +165,7 @@ function SdkApplicationView({
       ? "Planner has signed out. Reload to sign in again."
       : waiting
         ? "Waiting for approval in the mdbase tab…"
-        : snapshot.status === "setup_required"
+        : setup
           ? "This collection needs TaskNotes setup before planning."
           : error
             ? "Planner could not open this collection. Please try again."
@@ -190,6 +196,18 @@ function SdkApplicationView({
               }
             >
               Sign in
+            </button>
+          ) : null}
+          {setup ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={working}
+              onClick={() =>
+                void act((options) => application.configure(options))
+              }
+            >
+              Set up TaskNotes Planner
             </button>
           ) : null}
           {paired ? (

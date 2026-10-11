@@ -76,6 +76,8 @@ function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
       async () => snapshot,
     ),
     forget: vi.fn<MdbaseApplication["forget"]>(async () => snapshot),
+    assess: vi.fn<MdbaseApplication["assess"]>(async () => snapshot.readiness),
+    configure: vi.fn<MdbaseApplication["configure"]>(async () => snapshot),
     setForeground: vi.fn<MdbaseApplication["setForeground"]>(),
     close: vi.fn<MdbaseApplication["close"]>(async () => {
       publish({ status: "closed" });
@@ -167,6 +169,7 @@ async function readyFixture(title?: string) {
   });
   const connection: MdbaseApplicationConnection = {
     id: f.client.hello.collection,
+    displayName: "Native work",
     scope: {
       account: "fixture-account",
       installation: "fixture-installation",
@@ -560,7 +563,7 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(h.sdk.connection).not.toHaveBeenCalled();
   });
 
-  it("setup_required remains explicit with no app provision engine or fake ready transition", () => {
+  it("setup_required offers only the SDK's configure action, with no app provision engine or fake ready transition", async () => {
     const h = fixture({
       status: "setup_required",
       collections,
@@ -574,6 +577,18 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(
       screen.getByRole("button", { name: "Choose another collection" }),
     ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up TaskNotes Planner" }),
+    );
+    await waitFor(() =>
+      expect(h.application.configure).toHaveBeenCalledTimes(1),
+    );
+    const [options] = vi.mocked(h.application.configure).mock.calls[0] ?? [];
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    // Configure never invents readiness; the ledger still waits for the SDK.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "needs TaskNotes setup",
+    );
     expect(h.sdk.connection).not.toHaveBeenCalled();
   });
 

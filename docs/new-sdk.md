@@ -102,8 +102,8 @@ acceptance, independently of source tests or archive qualification.
 
 ## Public-entry source port
 
-The port branch targets the public application types landed at SDK source
-`e519009a1b1838b987e7afa8c77cd49c1687d6a5`. `createPlannerApplication`
+The port branch targets the public application entry at SDK dev source
+`563dc868fd5847abe272bd8cead1b044cd46fbe0` (first ported at `e519009a`). `createPlannerApplication`
 supplies only the unchanged manifest, name, origin, environment and a caller's
 actual registered application ID; no prototype UUID or storage override is used.
 `App` accepts that SDK entry optionally. Native mode does not import or instantiate
@@ -119,16 +119,24 @@ publish sign-out for a replacement owner. Identity uses the SDK's existing
 canonical email or GitHub provider/login fields, never an account UUID or a
 fabricated email.
 
-The public entry currently has an explicitly unavailable runtime shell. Registered
-binding, popup reopen/expiry helpers, explicit SDK
-configuration/provisioning and a public lifecycle testing seam remain producer
-work. `setup_required` stays visible; there is no app setup engine or synthetic
-READY. Old local data and pending writes need no cutover handoff for any app;
+The public entry currently has an explicitly unavailable runtime shell. When the
+SDK reports `setup_required` (status or readiness assessment), the gate offers
+**Set up TaskNotes Planner**, which calls only the SDK's `configure()` with the
+caller's signal; the SDK configures the current scope from Planner's canonical
+declaration. Planner keeps no setup engine and never infers READY from a
+configure result: the ledger still waits for current SDK readiness. The SDK's
+`assess()` is not called by the UI; readiness arrives through the snapshot.
+Registered binding and popup reopen/expiry helpers remain producer work.
+
+**Live hookup (pending the shared SDK entry singleton):** `createPlannerApplication`
+and `App`'s optional `sdk` prop are the seam. The entry point still constructs the
+existing Connect session; the switch to the shared singleton, its registered
+application ID and environment are deliberately not wired here. Old local data and pending writes need no cutover handoff for any app;
 ongoing new-SDK recovery remains mandatory.
 
-The original development intake at `e519009a` is installed through normal file
-dependencies on both its SDK archive and the unchanged canonical protocol718
-archive. The protocol tar must also be in the consumer's `vendor/` directory;
+The original development intake at `563dc868` is installed through normal file
+dependencies on both its SDK archive and its original beta129 protocol archive
+(source `d765e675c3da`). The protocol tar must also be in the consumer's `vendor/` directory;
 its transitive file path is consumer-relative. There are no aliases, API casts,
 private source copies or package rewrites. This intake permits source typechecking,
 not release or native qualification. UI lifecycle stand-ins and MemoryReplica
@@ -140,12 +148,17 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `e519009a1b1838b987e7afa8c77cd49c1687d6a5`: original 889027-byte
-SDK archive, 318 safe regular members, SHA256
-`659b5eb73dd9839d2184af37caf93ac6235d105f99436efedc59f6f01f5276c5`.
-The original protocol718 beta129 archive is 70658 bytes with SHA256
-`dfc5db0daf6700874aa2c6235b86570f1d4e444740d0925bf1f97551cf43d3bd`.
-Original hashes/member layout and SDK/protocol bytes were independently checked.
+SDK source `563dc868fd5847abe272bd8cead1b044cd46fbe0`: original 1359076-byte
+SDK archive, SHA256
+`8892aaff198437ad51d490dca86faad893275d991f6f848f758e457f4e7a1250`.
+Its original protocol beta129 dependency archive (source `d765e675c3da`) is
+70702 bytes with SHA256
+`2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces
+the earlier protocol718 `dfc5db0d` archive, including as the pnpm override for
+the legacy Connect packages. SHA256/SHA512 were checked against the release
+manifest. Relative to `e519009a`, the entry adds `assess()`, `configure()` and
+`MdbaseApplicationConnection.displayName`, and the `@mdbase-dev/sdk/testing`
+`createApplicationFixture` seam.
 Neither the public unavailable shell nor this dependency change enables native
 sign-in, READY, deployment or a change to the held LAB SDK.
 
