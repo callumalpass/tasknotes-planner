@@ -44,7 +44,7 @@ describe("first-run sample plan navigation", () => {
       await screen.findByRole("button", { name: "Sample tasks" }),
     );
     expect(
-      screen.getByRole("button", { name: "Use sample tasks" }),
+      await screen.findByRole("button", { name: "Use sample tasks" }),
     ).toBeTruthy();
     expect(new URL(location.href).searchParams.has("demo")).toBe(false);
     expect(new URL(location.href).searchParams.get("keep")).toBe("original");
@@ -53,19 +53,21 @@ describe("first-run sample plan navigation", () => {
     view.unmount();
     render(<App />);
     expect(
-      screen.getByRole("button", { name: "Use sample tasks" }),
+      await screen.findByRole("button", { name: "Use sample tasks" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sample tasks" })).toBeNull();
   });
   it("can enter and leave samples from the ordinary first-run action", async () => {
     history.replaceState(null, "", "/?keep=original");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Use sample tasks" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Use sample tasks" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "Sample tasks" }),
     );
     expect(
-      screen.getByRole("button", { name: "Use sample tasks" }),
+      await screen.findByRole("button", { name: "Use sample tasks" }),
     ).toBeTruthy();
     expect(location.search).toBe("?keep=original");
   });

@@ -109,6 +109,25 @@ describe("Planner connection recovery", () => {
     );
   });
 
+  it("surfaces asynchronous SDK clearSelection refusal without dropping the current ledger", async () => {
+    const repository = repositoryFixture();
+    const onChangeCollection = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(new Error("The original collection could not close."));
+    render(
+      <Planner
+        repository={repository}
+        onChangeCollection={onChangeCollection}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Work/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The original collection could not close.",
+    );
+    expect(screen.getByRole("button", { name: /Work/ })).toBeTruthy();
+    expect(onChangeCollection).toHaveBeenCalledOnce();
+  });
+
   it("recovers a durable pending handle explicitly and reconciles by loading", async () => {
     let completeRecovery = () => undefined;
     let pending: readonly PendingPlannerMutation[] = [

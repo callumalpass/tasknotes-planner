@@ -74,7 +74,8 @@ are available and tested.
 The integration target is one public SDK entry: declare the application, obtain
 its lifecycle session, authorize in a user gesture, select a collection, and use
 its current scoped connection for records, files and people. This entry is still
-being implemented; the pinned archive does not provide this complete composition.
+being implemented; the development archive provides its public types and an
+explicitly unavailable runtime shell, not the complete composition.
 TaskNotes is the first consumer and Planner follows after qualified delivery.
 
 Planner supplies only its declaration: identity, name, origin/environment and
@@ -99,19 +100,64 @@ experiments, not an integration recipe. Do not copy them into another app or the
 SDK. Native open/readiness/recovery requires qualified delivery and genuine local
 acceptance, independently of source tests or archive qualification.
 
+## Public-entry source port
+
+The port branch targets the public application types landed at SDK source
+`e519009a1b1838b987e7afa8c77cd49c1687d6a5`. `createPlannerApplication`
+supplies only the unchanged manifest, name, origin, environment and a caller's
+actual registered application ID; no prototype UUID or storage override is used.
+`App` accepts that SDK entry optionally. Native mode does not import or instantiate
+the legacy session; the default entry still uses the existing Connect runtime.
+
+The existing ledger receives `NextPlannerRepository` over the selected
+connection's **same borrowed client**, only when the SDK reports current semantic
+readiness and a current selected connection. UI teardown releases repository
+watches/scope, never the SDK client. Collection changes await SDK selection
+clearing and show close refusals without discarding the current ledger. Sign-out
+waits for successful physical close; late actions from retired UI owners cannot
+publish sign-out for a replacement owner. Identity uses the SDK's existing
+canonical email or GitHub provider/login fields, never an account UUID or a
+fabricated email.
+
+The public entry currently has an explicitly unavailable runtime shell. Registered
+binding, popup reopen/expiry helpers, explicit SDK
+configuration/provisioning and a public lifecycle testing seam remain producer
+work. `setup_required` stays visible; there is no app setup engine or synthetic
+READY. Old local data and pending writes need no cutover handoff for any app;
+ongoing new-SDK recovery remains mandatory.
+
+The original development intake at `e519009a` is installed through normal file
+dependencies on both its SDK archive and the unchanged canonical protocol718
+archive. The protocol tar must also be in the consumer's `vendor/` directory;
+its transitive file path is consumer-relative. There are no aliases, API casts,
+private source copies or package rewrites. This intake permits source typechecking,
+not release or native qualification. UI lifecycle stand-ins and MemoryReplica
+rendering tests do not qualify runtime, native initialization, registration or
+end-to-end operation. No deployment or LAB pin change is enabled.
+
 ## Artifact and checks
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
-The pin is the release-qualified successor at `b9965703`, including SDK837's
+The current pin is the **development intake, not release-qualified**, from exact
+SDK source `e519009a1b1838b987e7afa8c77cd49c1687d6a5`: original 889027-byte
+SDK archive, 318 safe regular members, SHA256
+`659b5eb73dd9839d2184af37caf93ac6235d105f99436efedc59f6f01f5276c5`.
+The original protocol718 beta129 archive is 70658 bytes with SHA256
+`dfc5db0daf6700874aa2c6235b86570f1d4e444740d0925bf1f97551cf43d3bd`.
+Original hashes/member layout and SDK/protocol bytes were independently checked.
+Neither the public unavailable shell nor this dependency change enables native
+sign-in, READY, deployment or a change to the held LAB SDK.
+
+The previous original release-qualified `b9965703` archive is retained, including SDK837's
 host/caller lifetime composition fix and SDK832's optional bounded
 `problemDetail`, plus the earlier public factory and provider-receipt helpers.
 Release qualified all 278 archive members, 1678 SDK tests and five browser-bundle
 checks (with three existing WASM-gated skips); the original 750928-byte archive
-is vendored unchanged. Planner consumes SDK snapshots directly and does not
+is retained unchanged. Planner consumes SDK snapshots directly and does not
 introduce a diagnostic parser, raw-error logging or retry authority. This pin
 activates no new factory or per-app native composition.
-This pin-only update does not change Planner's existing read/write implementation.
+The new entry source port does not change Planner's native read/write implementation.
 Archive SHA256/SHA512 were verified. This is source/package qualification, not
 per-app trust/origin/runtime/session/operation acceptance or a published release.
 The earlier SDK807 `5ba1314b` archive remains held and must not be reused; no

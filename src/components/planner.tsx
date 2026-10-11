@@ -50,7 +50,7 @@ export function Planner({
   onChangeCollection,
 }: {
   repository: PlannerRepository;
-  onChangeCollection(): void;
+  onChangeCollection(): void | Promise<void>;
 }) {
   const [collection, setCollection] = useState<PlannerCollection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -251,10 +251,10 @@ export function Planner({
     }
   }
 
-  function changeCollection() {
+  async function changeCollection() {
     setCollectionActionError("");
     try {
-      onChangeCollection();
+      await onChangeCollection();
     } catch (reason) {
       setCollectionActionError(errorMessage(reason));
     }
