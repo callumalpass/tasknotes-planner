@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`7193fd0d396dfec3b339fd3b353248bf3354d963` (first ported at `e519009a`, then `563dc868`, `ab00e5eb` and `8a557ad6`). `createPlannerApplication`
+`d53d7d761c1a7caf100e065a1378384dcc5f6449` (first ported at `e519009a`, then `563dc868`, `ab00e5eb`, `8a557ad6` and `7193fd0d`). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -139,13 +139,14 @@ builds keep the existing Connect runtime because the SDK refuses production
 (`application_production_trust_unavailable`). A LAB build also needs
 `TASKNOTES_PLANNER_URL` set to its served origin so the manifest homepage matches.
 `vite.config.ts` excludes the SDK from dev pre-bundling and emits ES workers.
-**Blocked at `7193fd0d`:** the production build fails inside the SDK bundle (it
-references an unshipped `sqlite3-worker1.mjs`), and the SDK's native wasm is not
-bundler-emitted; both are SDK fixes, with no app workaround. Old local data and
+The production build passes at `d53d7d76`: it emits the SDK Worker,
+`runtime-lab.wasm`, `sqlite3.wasm` and `sqlite3.js` once each, and the wasm
+matches the SDK's asset pins. Live LAB registration and readiness have not been
+exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The development intake at `7193fd0d` is installed through normal file
+The development intake at `d53d7d76` is installed through normal file
 dependencies on both its SDK archive and its original beta129 protocol archive
 (source `d765e675c3da`). The protocol tar must also be in the consumer's `vendor/` directory;
 its transitive file path is consumer-relative. There are no aliases, API casts,
@@ -159,10 +160,11 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `7193fd0d396dfec3b339fd3b353248bf3354d963`: 3799591-byte
+SDK source `d53d7d761c1a7caf100e065a1378384dcc5f6449`: 3506698-byte
 SDK archive, SHA256
-`2d03c9ddd75d844861ebf864cb7c0c4c51bbfed59965d8f29573053467ccfd03`
+`8b76b3fd687d9e557f3438f25313ac4c55bc0a8994c066bbbfb7c66e0f96cd1d`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
+plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
 native runtime/SQLite wasm, `describe({ definitions })`, collection selection
 and `files.grant`).
