@@ -336,6 +336,17 @@ select:focus-visible {
   color: var(--danger);
 }
 
+/* The SDK setup review stands alone, centred in the connection page. */
+.sdk-setup-review {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.sdk-setup-actions {
+  margin: 0;
+  padding: 18px 20px 20px;
+}
+
 .preview-topline,
 .preview-row {
   display: grid;

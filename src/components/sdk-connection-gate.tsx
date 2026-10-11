@@ -7,6 +7,7 @@ import {
 } from "@mdbase-dev/sdk";
 import { NextPlannerRepository } from "../data/next-planner-repository";
 import { Planner } from "./planner";
+import { SdkSetupReview } from "./sdk-setup-review";
 
 /** The SDK's public structural entry (production: `MdbaseConnect`), so test
  * fixtures need no private constructor state. This does not wrap or replace the
@@ -52,6 +53,8 @@ function SdkApplicationView({
   const busy = useRef(false);
   const [working, setWorking] = useState(false);
   const [interrupted, setInterrupted] = useState(false);
+  // Setup always goes through one review; nothing is written before Confirm.
+  const [reviewing, setReviewing] = useState(false);
 
   useEffect(() => {
     const scope = new AbortController();
@@ -205,7 +208,7 @@ function SdkApplicationView({
         assess: (options) => application.assess(options),
         approve: (options) => application.approve(undefined, options),
         chooseAnother: (options) => application.chooseAnother(options),
-        configure: (options) => application.configure(options),
+        configure: async () => setReviewing(true),
       })
     : null;
   const error =
@@ -242,6 +245,19 @@ function SdkApplicationView({
                           : opening || snapshot.status === "ready"
                             ? `Opening ${selected?.displayName ?? "your collection"}…`
                             : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
+
+  if (reviewing && setup && selected) {
+    return (
+      <main className="welcome">
+        <SdkSetupReview
+          application={application}
+          displayName={selected.displayName}
+          onCancel={() => setReviewing(false)}
+          onApplied={() => setReviewing(false)}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="welcome">
@@ -321,9 +337,7 @@ function SdkApplicationView({
               className="primary-action"
               type="button"
               disabled={working}
-              onClick={() =>
-                void act((options) => application.configure(options))
-              }
+              onClick={() => setReviewing(true)}
             >
               Set up TaskNotes Planner
             </button>

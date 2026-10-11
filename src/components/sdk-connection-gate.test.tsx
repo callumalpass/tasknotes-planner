@@ -10,11 +10,13 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MdbasePeopleClient,
+  mdbaseError,
   toPlain,
   type MdbaseApplication,
   type MdbaseApplicationConnection,
   type MdbaseApplicationSnapshot,
   type MdbaseClient,
+  type MdbaseSetupPlan,
 } from "@mdbase-dev/sdk";
 import { createApplicationFixture } from "@mdbase-dev/sdk/testing";
 import manifest from "../generated-mdbase-app.json";
@@ -32,7 +34,10 @@ const publicFixtures: { close(): void }[] = [];
 
 // Typed lifecycle stand-ins only; the actual SDK MemoryReplica/client→Planner
 // integration is in planner.native.test.tsx. No production session substitute.
-function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
+function fixture(
+  initial: Partial<MdbaseApplicationSnapshot> = {},
+  setup?: MdbaseApplication["setup"],
+) {
   const facet = { checking: false, assessment: null, problem: null };
   let snapshot: MdbaseApplicationSnapshot = {
     status: "signed_out",
@@ -86,7 +91,7 @@ function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
     for (const listener of listeners) listener();
   };
   const application: MdbaseApplication = {
-    setup: original.setup,
+    setup: setup ?? original.setup,
     deleteCollection: original.deleteCollection,
     getSnapshot: () => snapshot,
     subscribe(listener) {
@@ -740,33 +745,98 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     ).toBeVisible();
   });
 
-  it("setup_required offers only the SDK's configure action, with no app provision engine or fake ready transition", async () => {
-    const h = fixture({
-      status: "setup_required",
-      collections,
-      selectedCollectionId: "selected",
-      signIn: paired,
-    });
+  const setupPlan: MdbaseSetupPlan = {
+    status: "setup",
+    canApply: true,
+    digest: `sha256:${"a".repeat(64)}`,
+    summary: "This app will make 2 changes to this collection.",
+    changes: [
+      {
+        kind: "create",
+        target: "_types/task.md",
+        message: 'Add the "task" record type.',
+      },
+      {
+        kind: "setting",
+        target: "record extensions",
+        message: 'Add "base" to the collection\'s record extensions setting.',
+      },
+    ],
+    conflicts: [],
+    adoptable: {},
+    packs: [],
+    staged: [],
+    records: [],
+  };
+  function setupFixture(apply: MdbaseApplication["setup"]["apply"]) {
+    const setup = {
+      plan: vi.fn<MdbaseApplication["setup"]["plan"]>(async () => setupPlan),
+      apply: vi.fn(apply),
+    };
+    const h = fixture(
+      {
+        status: "setup_required",
+        collections,
+        selectedCollectionId: "selected",
+        signIn: paired,
+      },
+      setup,
+    );
     render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "needs TaskNotes setup",
     );
-    expect(
-      screen.getByRole("button", { name: "Choose another collection" }),
-    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Set up TaskNotes Planner" }),
     );
-    await waitFor(() =>
-      expect(h.application.configure).toHaveBeenCalledTimes(1),
+    return { ...h, setup };
+  }
+
+  it("setup shows the SDK's review and writes nothing until Confirm applies that exact plan", async () => {
+    const h = setupFixture(async () => h.application.getSnapshot());
+    expect(await screen.findByText(setupPlan.summary)).toBeVisible();
+    expect(screen.getByText('Add the "task" record type.')).toBeVisible();
+    expect(screen.getByText(/record extensions setting/)).toBeVisible();
+    expect(h.setup.apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(h.setup.apply).toHaveBeenCalledOnce());
+    expect(h.setup.apply.mock.calls[0]?.[0]).toBe(setupPlan);
+    expect(h.setup.apply.mock.calls[0]?.[1]?.signal).toBeInstanceOf(
+      AbortSignal,
     );
-    const [options] = vi.mocked(h.application.configure).mock.calls[0] ?? [];
-    expect(options?.signal).toBeInstanceOf(AbortSignal);
-    // Configure never invents readiness; the ledger still waits for the SDK.
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "needs TaskNotes setup",
+    expect(h.application.configure).not.toHaveBeenCalled();
+    // Applying never invents readiness; the ledger still waits for the SDK.
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "needs TaskNotes setup",
+      ),
     );
     expect(h.sdk.connection).not.toHaveBeenCalled();
+  });
+
+  it("a collection that changed during review is planned again, never applied blind", async () => {
+    const h = setupFixture(async () => {
+      throw mdbaseError("conflict", "changed", "setup_changed");
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    expect(
+      await screen.findByText(/changed while you were reviewing/),
+    ).toBeVisible();
+    expect(h.setup.plan).toHaveBeenCalledTimes(2);
+    expect(h.setup.apply).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByRole("button", { name: "Confirm" }),
+    ).toBeEnabled();
+  });
+
+  it("Cancel leaves the collection untouched", async () => {
+    const h = setupFixture(async () => h.application.getSnapshot());
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(
+      screen.getByRole("button", { name: "Set up TaskNotes Planner" }),
+    ).toBeVisible();
+    expect(h.setup.apply).not.toHaveBeenCalled();
+    expect(h.application.configure).not.toHaveBeenCalled();
   });
 
   it("ready transport with unknown semantic assessment or no usable connection cannot render a ledger", () => {
