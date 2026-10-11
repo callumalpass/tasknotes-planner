@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  describeError,
   isMdbaseError,
   type MdbaseApplication,
   type MdbaseSetupPlan,
@@ -12,7 +13,24 @@ type State =
   | { kind: "failed"; message: string };
 
 const changedNote =
-  "This collection changed while you were reviewing. Here are the updated changes.";
+  "This collection changed while you were reviewing. Nothing was changed. Here are the updated changes.";
+const unknownNote =
+  "Planner couldn't confirm whether setup finished. Here is the collection as it is now.";
+
+/** Only a known refusal proves nothing was written. A lost reply after the
+ * request was sent, or an error that isn't an SDK error, may have applied. */
+function setupOutcome(error: unknown): "changed" | "unknown" | "failed" {
+  if (!isMdbaseError(error)) return "unknown";
+  if (error.reason === "setup_changed") return "changed";
+  return error.code === "outcome_unknown" || error.mutationId !== undefined
+    ? "unknown"
+    : "failed";
+}
+/** Nothing to review: no changes, no conflicts and no refusal. */
+const quiet = (plan: MdbaseSetupPlan): boolean =>
+  !plan.refusal && plan.changes.length === 0 && plan.conflicts.length === 0;
+const describe = (error: unknown, fallback: string): string =>
+  describeError(error)?.message ?? fallback;
 
 /** One review before setup: the SDK's plan summary and plain per-change
  * messages, then Confirm applies exactly that plan. Nothing is written
@@ -23,7 +41,7 @@ export function SdkSetupReview({
   onCancel,
   onApplied,
 }: {
-  application: Pick<MdbaseApplication, "setup">;
+  application: Pick<MdbaseApplication, "setup" | "configure">;
   displayName: string;
   onCancel(): void;
   onApplied?(): void;
@@ -31,6 +49,10 @@ export function SdkSetupReview({
   const [state, setState] = useState<State>({ kind: "planning" });
   const adopt = useRef<Readonly<Record<string, string>> | undefined>(undefined);
   const scope = useRef<AbortController | null>(null);
+  const applied = useRef(onApplied);
+  useEffect(() => {
+    applied.current = onApplied;
+  });
 
   const plan = useCallback(
     async (note?: string) => {
@@ -43,12 +65,23 @@ export function SdkSetupReview({
           signal,
           ...(choice ? { adopt: choice } : {}),
         });
-        if (!signal.aborted) setState({ kind: "review", plan: next, note });
-      } catch {
+        if (signal.aborted) return;
+        // Nothing to review keeps the plain configure() path, unless this is
+        // a re-assessment after an unconfirmed outcome that must be shown.
+        if (quiet(next) && note === undefined) {
+          await application.configure({ signal });
+          if (!signal.aborted) applied.current?.();
+          return;
+        }
+        setState({ kind: "review", plan: next, note });
+      } catch (error) {
         if (!signal.aborted)
           setState({
             kind: "failed",
-            message: "Planner couldn't check what setup would change.",
+            message: describe(
+              error,
+              "Planner couldn't check what setup would change.",
+            ),
           });
       }
     },
@@ -74,11 +107,15 @@ export function SdkSetupReview({
       if (!signal.aborted) onApplied?.();
     } catch (error) {
       if (signal.aborted) return;
-      if (isMdbaseError(error) && error.reason === "setup_changed")
-        return void plan(changedNote);
+      const outcome = setupOutcome(error);
+      if (outcome !== "failed")
+        return void plan(outcome === "changed" ? changedNote : unknownNote);
       setState({
         kind: "failed",
-        message: "Setup didn't finish. Nothing was changed.",
+        message: describe(
+          error,
+          "Setup couldn't be completed. Please try again.",
+        ),
       });
     }
   };
@@ -120,6 +157,11 @@ export function SdkSetupReview({
               : shown?.summary}
         </p>
       </div>
+      {shown?.refusal ? (
+        <p className="setup-refusal" role="alert">
+          {shown.refusal.message}
+        </p>
+      ) : null}
       {shown && (shown.changes.length > 0 || shown.conflicts.length > 0) ? (
         <ul className="setup-change-list">
           {shown.changes.map((change) => (

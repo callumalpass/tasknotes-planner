@@ -342,6 +342,12 @@ select:focus-visible {
   justify-self: center;
 }
 
+.setup-refusal {
+  margin: 0;
+  padding: 12px 20px 0;
+  color: var(--danger);
+}
+
 .sdk-setup-actions {
   margin: 0;
   padding: 18px 20px 20px;

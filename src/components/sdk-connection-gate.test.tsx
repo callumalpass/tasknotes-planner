@@ -768,9 +768,12 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     staged: [],
     records: [],
   };
-  function setupFixture(apply: MdbaseApplication["setup"]["apply"]) {
+  function setupFixture(
+    apply: MdbaseApplication["setup"]["apply"],
+    planned: MdbaseSetupPlan = setupPlan,
+  ) {
     const setup = {
-      plan: vi.fn<MdbaseApplication["setup"]["plan"]>(async () => setupPlan),
+      plan: vi.fn<MdbaseApplication["setup"]["plan"]>(async () => planned),
       apply: vi.fn(apply),
     };
     const h = fixture(
@@ -827,6 +830,56 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(
       await screen.findByRole("button", { name: "Confirm" }),
     ).toBeEnabled();
+  });
+
+  it("an unconfirmed setup outcome re-assesses and never claims nothing changed", async () => {
+    const h = setupFixture(async () => {
+      throw mdbaseError("outcome_unknown", "lost reply");
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    expect(
+      await screen.findByText(/couldn't confirm whether setup finished/),
+    ).toBeVisible();
+    await waitFor(() => expect(h.setup.plan).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Nothing was changed/)).toBeNull();
+    expect(await screen.findByText(setupPlan.summary)).toBeVisible();
+  });
+
+  it("a plan with nothing to review keeps the plain configure path", async () => {
+    const h = setupFixture(async () => h.application.getSnapshot(), {
+      ...setupPlan,
+      status: "current",
+      canApply: false,
+      summary: "Already set up.",
+      changes: [],
+    });
+    await waitFor(() => expect(h.application.configure).toHaveBeenCalledOnce());
+    expect(h.setup.apply).not.toHaveBeenCalled();
+    expect(screen.queryByText("Already set up.")).toBeNull();
+  });
+
+  it("shows the plan's refusal message plainly", async () => {
+    setupFixture(
+      async () => {
+        throw new Error("never applied");
+      },
+      {
+        ...setupPlan,
+        status: "conflict",
+        canApply: false,
+        changes: [],
+        refusal: {
+          code: "setup_forbidden",
+          message: "Only the collection's owner can set up Planner.",
+        },
+      },
+    );
+    expect(
+      await screen.findByText(
+        "Only the collection's owner can set up Planner.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   });
 
   it("Cancel leaves the collection untouched", async () => {
