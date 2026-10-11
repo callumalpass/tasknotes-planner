@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { MdbaseApplicationEntry, MdbaseClient } from "@mdbase-dev/sdk";
+import {
+  describeError,
+  type MdbaseApplicationEntry,
+  type MdbaseClient,
+  type MdbaseErrorDescription,
+} from "@mdbase-dev/sdk";
 import { NextPlannerRepository } from "../data/next-planner-repository";
 import { Planner } from "./planner";
 
@@ -184,6 +189,25 @@ function SdkApplicationView({
     : signIn?.accountProvider === "github" && signIn.accountLogin
       ? `Signed in as ${signIn.accountLogin} on GitHub`
       : null;
+  // Settled SDK problems (blocked start, readiness, incompatible): the SDK's
+  // shared copy and its one suggested action, never raw codes or endless Opening.
+  const problem =
+    closed || unavailable || waiting || invalid || approval
+      ? null
+      : snapshot.status === "blocked" || readinessProblem || incompatible
+        ? describeError(snapshot)
+        : null;
+  const recovery = problem
+    ? recoveryAction(problem, {
+        readiness: readinessProblem && snapshot.status !== "blocked",
+        authorize: (options) => application.authorize(options),
+        restart: (options) => application.start(options),
+        assess: (options) => application.assess(options),
+        approve: (options) => application.approve(undefined, options),
+        chooseAnother: (options) => application.chooseAnother(options),
+        configure: (options) => application.configure(options),
+      })
+    : null;
   const error =
     interrupted ||
     snapshot.status === "blocked" ||
@@ -191,31 +215,33 @@ function SdkApplicationView({
     readinessProblem ||
     incompatible ||
     retired;
-  const message = unavailable
-    ? "Opening collections isn't available in this build yet."
-    : closed
-      ? "Planner has signed out. Reload to sign in again."
-      : waiting
-        ? "Waiting for approval in the mdbase tab…"
-        : invalid
-          ? "This link doesn't name a collection Planner can open."
-          : approval
-            ? "Planner isn't approved for the collection in this link yet."
-            : incompatible
-              ? "This collection isn't compatible with TaskNotes Planner. Choose another collection."
-              : readinessProblem
-                ? "Planner couldn't check this collection. Check again or choose another collection."
-                : unchecked
-                  ? "This collection hasn't been checked yet. Check again before planning."
-                  : retired
-                    ? "The connection to this collection has changed. Choose the collection again."
-                    : setup
-                      ? "This collection needs TaskNotes setup before planning."
-                      : error
-                        ? "Planner could not open this collection. Please try again."
-                        : opening || snapshot.status === "ready"
-                          ? `Opening ${selected?.displayName ?? "your collection"}…`
-                          : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
+  const message = problem
+    ? problem.message
+    : unavailable
+      ? "Opening collections isn't available in this build yet."
+      : closed
+        ? "Planner has signed out. Reload to sign in again."
+        : waiting
+          ? "Waiting for approval in the mdbase tab…"
+          : invalid
+            ? "This link doesn't name a collection Planner can open."
+            : approval
+              ? "Planner isn't approved for the collection in this link yet."
+              : incompatible
+                ? "This collection isn't compatible with TaskNotes Planner. Choose another collection."
+                : readinessProblem
+                  ? "Planner couldn't check this collection. Check again or choose another collection."
+                  : unchecked
+                    ? "This collection hasn't been checked yet. Check again before planning."
+                    : retired
+                      ? "The connection to this collection has changed. Choose the collection again."
+                      : setup
+                        ? "This collection needs TaskNotes setup before planning."
+                        : error
+                          ? "Planner could not open this collection. Please try again."
+                          : opening || snapshot.status === "ready"
+                            ? `Opening ${selected?.displayName ?? "your collection"}…`
+                            : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
 
   return (
     <main className="welcome">
@@ -226,6 +252,7 @@ function SdkApplicationView({
         </div>
         <h1 id="sdk-signin-title">Plan tasks on a timeline.</h1>
         {identity ? <p>{identity}</p> : null}
+        {problem ? <h2>{problem.title}</h2> : null}
         <p role={error ? "alert" : "status"} aria-live="polite">
           {message}
         </p>
@@ -234,6 +261,7 @@ function SdkApplicationView({
           !unavailable &&
           !waiting &&
           !opening &&
+          !problem &&
           !retryReadiness &&
           !incompatible &&
           !retired ? (
@@ -248,7 +276,25 @@ function SdkApplicationView({
               Sign in
             </button>
           ) : null}
-          {retryReadiness ? (
+          {recovery && "href" in recovery ? (
+            <a className="primary-action" href={recovery.href}>
+              {recovery.label}
+            </a>
+          ) : recovery ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={working}
+              onClick={() =>
+                recovery.reload
+                  ? window.location.reload()
+                  : void act(recovery.run)
+              }
+            >
+              {recovery.label}
+            </button>
+          ) : null}
+          {retryReadiness && !problem ? (
             <button
               className="primary-action"
               type="button"
@@ -270,7 +316,7 @@ function SdkApplicationView({
               Approve this collection
             </button>
           ) : null}
-          {setup ? (
+          {setup && recovery?.label !== "Set up" ? (
             <button
               className="primary-action"
               type="button"
@@ -354,6 +400,53 @@ function SdkApplicationView({
       </section>
     </main>
   );
+}
+
+type Run = (options: { signal: AbortSignal }) => Promise<unknown>;
+type Recovery =
+  | { label: string; href: string }
+  | { label: string; run: Run; reload?: false }
+  | { label: string; run: Run; reload: true };
+
+/** The SDK's suggested action as one Planner control. Readiness problems
+ * re-check rather than reload; an unknown action offers no pretend fix. */
+function recoveryAction(
+  problem: MdbaseErrorDescription,
+  ports: {
+    readiness: boolean;
+    authorize: Run;
+    restart: Run;
+    assess: Run;
+    approve: Run;
+    chooseAnother: Run;
+    configure: Run;
+  },
+): Recovery | null {
+  const label = problem.actionLabel ?? "Try again";
+  switch (problem.action) {
+    case "sign_in":
+      return { label, run: ports.authorize };
+    case "approve":
+      return { label, run: ports.approve };
+    case "set_up":
+      return { label, run: ports.configure };
+    case "choose_collection":
+      return { label, run: ports.chooseAnother };
+    case "update_app":
+      // A web app updates by reloading when the SDK names no update page.
+      return problem.updateUrl
+        ? { label, href: problem.updateUrl }
+        : { label, run: ports.restart, reload: true };
+    case "retry":
+    case "check_connection":
+    case "reload":
+      if (ports.readiness) return { label: "Check again", run: ports.assess };
+      return problem.action === "reload"
+        ? { label, run: ports.restart, reload: true }
+        : { label, run: ports.restart };
+    default:
+      return null;
+  }
 }
 
 function SdkPlannerView({

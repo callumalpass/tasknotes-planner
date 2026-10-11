@@ -371,7 +371,15 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
       expect(h.client.describe).not.toHaveBeenCalled();
       expect(h.client.listAppBasesViews).not.toHaveBeenCalled();
       if (state === "incompatible") {
-        expect(screen.getByRole("alert")).toHaveTextContent("isn't compatible");
+        expect(
+          screen.getByRole("heading", {
+            name: "This collection isn't compatible",
+          }),
+        ).toBeVisible();
+        expect(screen.getByRole("alert")).toHaveTextContent("Update the app");
+        expect(
+          screen.getByRole("link", { name: "Update the app" }),
+        ).toHaveAttribute("href", expect.stringMatching(/^https:\/\//));
         fireEvent.click(
           screen.getByRole("button", { name: "Choose another collection" }),
         );
@@ -696,6 +704,40 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Selected work" })).toBeNull();
     expect(h.sdk.connection).not.toHaveBeenCalled();
+  });
+
+  it("a blocked open shows the SDK's title, copy and one action, never a raw code or endless Opening", async () => {
+    const h = fixture({
+      status: "blocked",
+      problem: "unauthenticated",
+      collections,
+      selectedCollectionId: "selected",
+    });
+    const view = render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+    expect(
+      screen.getByRole("heading", { name: "Sign in again" }),
+    ).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Your session has ended",
+    );
+    expect(screen.queryByText(/Opening/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(h.application.authorize).toHaveBeenCalledOnce());
+    view.unmount();
+
+    const unknown = fixture({
+      status: "blocked",
+      problem: "private-open-diagnostic",
+      collections,
+      selectedCollectionId: "selected",
+    });
+    render(<SdkConnectionGate sdk={unknown.sdk} onDemo={vi.fn()} />);
+    expect(screen.queryByText(/private-open-diagnostic/)).toBeNull();
+    expect(screen.queryByText(/Opening/)).toBeNull();
+    expect(screen.getByRole("heading", { level: 2 })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /Try again|Reload/ }),
+    ).toBeVisible();
   });
 
   it("setup_required offers only the SDK's configure action, with no app provision engine or fake ready transition", async () => {
