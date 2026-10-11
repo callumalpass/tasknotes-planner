@@ -1,16 +1,17 @@
 {
   "package": "@mdbase-dev/sdk",
   "version": "0.0.0",
-  "artifact": "mdbase-dev-sdk-dev-2e2ae687-n1.tgz",
-  "cutIdentity": "sdk-dev-2e2ae687-n1",
-  "sourceCommit": "2e2ae687f96d0a0c074ef6bc46bb77b97089f325",
+  "artifact": "mdbase-dev-sdk-dev-4b955381.tgz",
+  "cutIdentity": "sdk-dev-4b955381",
+  "sourceCommit": "4b9553819ddb769ff1487170c05494321d23ab8b",
   "label": "dev intake, not release-qualified",
-  "sha256": "58bc19022164eed1ef2236e392786db7fba6447d32b9bc3f2163c247d1c42faf",
-  "integrity": "sha512-jXEuBeyzl3tIGERWYVRXqiFva0UcTDQq6l3tqSaXE0McN+d7AZm9D6/DHkXknSI/8hH0QaQg7+vZW5FEpcOehA==",
+  "sha256": "9874074d6a68287780de2092a069c1cb4e81d3558e432b719b7525974eb6b0ad",
+  "integrity": "sha512-1935zBydG8X//I36KdFnTfY+PddEF5GQ/6363l9FrdARiFu1b/26K7Ai3P9NcuZF/VYh91Qs+j673T7af2AWkA==",
+  "bytes": 4292587,
   "native": {
     "available": true,
-    "bytes": 3462973,
-    "sha256": "6762b92e4b57b1a4df965c7991a064efe05eb950a66ec332e0504f73a8e42b72"
+    "bytes": 3533579,
+    "sha256": "38ca6f006aef7675ebe16abb981c7ba59fe0c27c287d78ee0b845c26aff37ba8"
   },
   "releaseQualified": false,
   "localDependencies": [
@@ -21,6 +22,24 @@
       "sourceCommit": "d765e675c3da29fe1693deab53c4c2a922bb86f1",
       "sha256": "2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f",
       "integrity": "sha512-PFG1qmAzmcyJjmZLmGz4eoOOZRDgvTvDZATf6IGBccNHRc1eGZtMm7ZUA7gNAxuO5KerrN6mDIB9qQnpojyOAg=="
+    }
+  ],
+  "bundledOriginalDependencies": [
+    {
+      "name": "@mdbase-dev/connect-protocol",
+      "file": "vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-3c14fc913a80.tgz",
+      "bytes": 71190,
+      "sha256": "3dc48b6b9dbf8651b6c300ab5896408ff90a0e1a7b8f1312e27442914b50ca83",
+      "sri": "sha512-1cGQC+RKazMrL6NVkt6gFR6vElOruPJb0wLYjtVZU69C88FChTzkr9o12UvoKMFVFUpi0JDa4RPD/iNHUb7d7A=="
+    }
+  ],
+  "vendorWarnings": [
+    {
+      "authority": "co0648",
+      "source": "4b9553819ddb769ff1487170c05494321d23ab8b",
+      "path": "vendor/mdbase-dev-connect-protocol-0.1.0-beta.129.tgz",
+      "sha256": "dfc5db0daf6700874aa2c6235b86570f1d4e444740d0925bf1f97551cf43d3bd",
+      "warning": "known unreferenced extra, frozen DEV/LAB-only intake; unused at runtime; exception does not apply to successor"
     }
   ],
   "includesPublicApplicationEntry": true,
