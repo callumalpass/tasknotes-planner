@@ -2,18 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MdbaseApplicationUnavailableError } from "@mdbase-dev/sdk";
 import { createPlannerApplication } from "./sdk-application";
 
-// Constructor-only fixture UUID: NOT a CP registration or native runtime proof.
-const fixtureId = "11111111-1111-4111-8111-111111111111";
 afterEach(() => vi.restoreAllMocks());
 
 describe("Planner declaration against actual public SDK development shell", () => {
   it("gets the same public singleton, with honest unavailable readiness and no initialization IO", async () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     const open = vi.spyOn(window, "open");
-    const sdk = createPlannerApplication({
-      registeredApplicationId: fixtureId,
-      environment: "production",
-    });
+    // jsdom has no module Worker, so the entry is the SDK's honest unavailable shell.
+    const sdk = createPlannerApplication({ environment: "production" });
     const application = sdk.application();
     expect(sdk.application()).toBe(application);
     expect(application.getSnapshot().status).toBe("blocked");

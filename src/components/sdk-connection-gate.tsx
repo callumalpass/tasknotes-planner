@@ -133,7 +133,7 @@ function SdkApplicationView({
             throw new Error(
               "This collection has changed. Choose a collection again.",
             );
-          await application.clearSelection({ signal: scope.signal });
+          await application.chooseAnother({ signal: scope.signal });
           scope.signal.throwIfAborted();
         }}
       />
@@ -142,7 +142,11 @@ function SdkApplicationView({
 
   const unavailable = snapshot.problem === "application_not_yet_available";
   const closed = snapshot.status === "closed";
-  const waiting = snapshot.status === "authorizing";
+  const selection = snapshot.selection.state;
+  const waiting =
+    snapshot.status === "authorizing" || selection === "approving";
+  const approval = !closed && selection === "approval_required";
+  const invalid = !closed && selection === "invalid";
   const opening =
     ["starting", "opening"].includes(snapshot.status) ||
     snapshot.readiness.checking;
@@ -158,20 +162,24 @@ function SdkApplicationView({
     : signIn?.accountProvider === "github" && signIn.accountLogin
       ? `Signed in as ${signIn.accountLogin} on GitHub`
       : null;
-  const error = interrupted || snapshot.status === "blocked";
+  const error = interrupted || snapshot.status === "blocked" || invalid;
   const message = unavailable
     ? "Opening collections isn't available in this build yet."
     : closed
       ? "Planner has signed out. Reload to sign in again."
       : waiting
         ? "Waiting for approval in the mdbase tab…"
-        : setup
-          ? "This collection needs TaskNotes setup before planning."
-          : error
-            ? "Planner could not open this collection. Please try again."
-            : opening || snapshot.status === "ready"
-              ? `Opening ${selected?.displayName ?? "your collection"}…`
-              : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
+        : invalid
+          ? "This link doesn't name a collection Planner can open."
+          : approval
+            ? "Planner isn't approved for the collection in this link yet."
+            : setup
+              ? "This collection needs TaskNotes setup before planning."
+              : error
+                ? "Planner could not open this collection. Please try again."
+                : opening || snapshot.status === "ready"
+                  ? `Opening ${selected?.displayName ?? "your collection"}…`
+                  : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
 
   return (
     <main className="welcome">
@@ -196,6 +204,18 @@ function SdkApplicationView({
               }
             >
               Sign in
+            </button>
+          ) : null}
+          {approval ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={working}
+              onClick={() =>
+                void act((options) => application.approve(undefined, options))
+              }
+            >
+              Approve this collection
             </button>
           ) : null}
           {setup ? (
@@ -239,13 +259,13 @@ function SdkApplicationView({
               Forget collection
             </button>
           ) : null}
-          {snapshot.selectedCollectionId && !closed ? (
+          {(snapshot.selectedCollectionId && !closed) || approval || invalid ? (
             <button
               className="text-action"
               type="button"
               disabled={working}
               onClick={() =>
-                void act((options) => application.clearSelection(options))
+                void act((options) => application.chooseAnother(options))
               }
             >
               Choose another collection

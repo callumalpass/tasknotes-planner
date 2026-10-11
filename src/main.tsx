@@ -4,11 +4,11 @@ import "@fontsource/azeret-mono/500.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { App } from "./components/app";
+import { Root } from "./components/root";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Root />
   </StrictMode>,
 );

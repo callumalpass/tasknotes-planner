@@ -37,6 +37,17 @@ function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
     selectedCollectionId: null,
     problem: null,
     timing: null,
+    selection: {
+      state: "none",
+      requested: {
+        collectionId: null,
+        source: "none",
+        displayName: null,
+        approved: false,
+      },
+      usable: null,
+      problem: null,
+    },
     readiness: {
       ...facet,
       facets: {
@@ -72,6 +83,11 @@ function fixture(initial: Partial<MdbaseApplicationSnapshot> = {}) {
       return snapshot;
     }),
     select: vi.fn<MdbaseApplication["select"]>(async () => snapshot),
+    approve: vi.fn<MdbaseApplication["approve"]>(async () => snapshot),
+    reauthorize: vi.fn<MdbaseApplication["reauthorize"]>(async () => snapshot),
+    chooseAnother: vi.fn<MdbaseApplication["chooseAnother"]>(
+      async () => snapshot,
+    ),
     clearSelection: vi.fn<MdbaseApplication["clearSelection"]>(
       async () => snapshot,
     ),
@@ -355,7 +371,9 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     const close = vi.spyOn(original.client, "close");
     render(<SdkConnectionGate sdk={original.sdk} onDemo={vi.fn()} />);
     await waitFor(() => expect(original.client.describe).toHaveBeenCalled());
-    const originalSignal = vi.mocked(original.client.describe).mock.calls[0][0];
+    const describeArg = vi.mocked(original.client.describe).mock.calls[0][0];
+    const originalSignal =
+      describeArg instanceof AbortSignal ? describeArg : describeArg?.signal;
     await act(async () =>
       original.publish({
         selectedCollectionId: replacement.connection.id,
@@ -416,7 +434,7 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(screen.getByText("Signed in as planner@example.test")).toBeTruthy();
   });
 
-  it("forgets the actual selected ID and delegates clearSelection separately", async () => {
+  it("forgets the actual selected ID and delegates chooseAnother separately", async () => {
     const h = fixture({
       status: "unselected",
       collections,
@@ -438,10 +456,48 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     fireEvent.click(
       screen.getByRole("button", { name: "Choose another collection" }),
     );
-    expect(h.application.clearSelection).toHaveBeenCalledWith({
+    expect(h.application.chooseAnother).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
     });
     expect(h.application.close).not.toHaveBeenCalled();
+  });
+
+  it("offers approval or another collection for an unapproved link, never a fallback", async () => {
+    const h = fixture({
+      status: "unselected",
+      signIn: paired,
+      selection: {
+        state: "approval_required",
+        requested: {
+          collectionId: "linked",
+          source: "url",
+          displayName: null,
+          approved: false,
+        },
+        usable: null,
+        problem: null,
+      },
+    });
+    render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+    expect(screen.getByText(/isn't approved for the collection/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Approve this collection" }),
+    );
+    await waitFor(() =>
+      expect(h.application.approve).toHaveBeenCalledWith(undefined, {
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Choose another collection" }),
+      ).not.toBeDisabled(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose another collection" }),
+    );
+    expect(h.application.chooseAnother).toHaveBeenCalled();
+    expect(h.application.select).not.toHaveBeenCalled();
   });
 
   it("cannot publish signout before successful physical close", async () => {
