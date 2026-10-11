@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`41c26ca73f6c97551ba4732c35627d626b927f03`, original `sdk-dev-41c26ca7` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
+`4c484d3cc3d06b7ecbac8061b171a25d72be2ae4`, original `sdk-dev-4c484d3c` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -152,7 +152,7 @@ exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The original DEV/LAB intake `sdk-dev-41c26ca7` is installed through a
+The original DEV/LAB intake `sdk-dev-4c484d3c` is installed through a
 normal file dependency. It bundles the original beta129 protocol archive
 (`c280cd194ffd`); Planner retains its direct `d765e675c3da` protocol dependency
 for legacy packages. This archive has no vendor warnings; the earlier unused
@@ -162,14 +162,19 @@ not release or native qualification. UI lifecycle stand-ins and MemoryReplica
 rendering tests do not qualify runtime, native initialization, registration or
 end-to-end operation. No deployment or LAB pin change is enabled.
 
+The current cut adds SDK-owned lazy Worker startup, pairing only from a sign-in
+gesture, native-return opening and refused/expired sign-in recovery. SDK refusal
+copy is rendered unchanged; Sign in stays enabled while authorizing and invokes
+SDK `approve()`. Planner supplies no pairing or renewal engine.
+
 ## Artifact and checks
 
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `41c26ca73f6c97551ba4732c35627d626b927f03`, original `41c` cut:
-3978820-byte SDK archive, SHA256
-`f8a00e2364d6adacb8a8ddcfa219f4ae5a5451bfd817758a9022ca32fb9ef1e3`
+SDK source `4c484d3cc3d06b7ecbac8061b171a25d72be2ae4`, original `4c` cut:
+4000217-byte SDK archive, SHA256
+`b4cee1c3cd8141d62b1fdaf3239184ba70542e92e223e3b5014fb12e7f763d73`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
 plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the

@@ -50,7 +50,8 @@ function SdkApplicationView({
     () => application.getSnapshot(),
   );
   const caller = useRef<AbortController | null>(null);
-  const busy = useRef(false);
+  const busy = useRef(0);
+  const latestAction = useRef(0);
   const [working, setWorking] = useState(false);
   const [interrupted, setInterrupted] = useState(false);
   // Setup always goes through one review; nothing is written before Confirm.
@@ -95,21 +96,22 @@ function SdkApplicationView({
 
   const act = async (
     action: (options: { signal: AbortSignal }) => Promise<unknown>,
+    signIn = false,
   ) => {
     const scope = caller.current;
-    if (!scope || scope.signal.aborted || busy.current) return;
-    busy.current = true;
+    if (!scope || scope.signal.aborted || (busy.current > 0 && !signIn)) return;
+    const ordinal = ++latestAction.current;
+    busy.current++;
     setWorking(true);
     setInterrupted(false);
     try {
       await action({ signal: scope.signal });
     } catch {
-      if (!scope.signal.aborted) setInterrupted(true);
+      if (!scope.signal.aborted && ordinal === latestAction.current)
+        setInterrupted(true);
     } finally {
-      if (!scope.signal.aborted) {
-        busy.current = false;
-        setWorking(false);
-      }
+      busy.current--;
+      if (!scope.signal.aborted) setWorking(busy.current > 0);
     }
   };
 
@@ -194,16 +196,20 @@ function SdkApplicationView({
       : null;
   // Settled SDK problems (blocked start, readiness, incompatible): the SDK's
   // shared copy and its one suggested action, never raw codes or endless Opening.
+  const sdkDescription = describeError(snapshot);
   const problem =
-    closed || unavailable || waiting || invalid || approval
+    closed || unavailable
       ? null
-      : snapshot.status === "blocked" || readinessProblem || incompatible
-        ? describeError(snapshot)
-        : null;
+      : sdkDescription?.action === "sign_in"
+        ? sdkDescription
+        : waiting || invalid || approval
+          ? null
+          : snapshot.status === "blocked" || readinessProblem || incompatible
+            ? sdkDescription
+            : null;
   const recovery = problem
     ? recoveryAction(problem, {
         readiness: readinessProblem && snapshot.status !== "blocked",
-        authorize: (options) => application.authorize(options),
         restart: (options) => application.start(options),
         assess: (options) => application.assess(options),
         approve: (options) => application.approve(undefined, options),
@@ -275,7 +281,6 @@ function SdkApplicationView({
         <div className="welcome-actions">
           {!closed &&
           !unavailable &&
-          !waiting &&
           !opening &&
           !problem &&
           !retryReadiness &&
@@ -284,9 +289,11 @@ function SdkApplicationView({
             <button
               className="primary-action"
               type="button"
-              disabled={working}
               onClick={() =>
-                void act((options) => application.authorize(options))
+                void act(
+                  (options) => application.approve(undefined, options),
+                  true,
+                )
               }
             >
               Sign in
@@ -300,11 +307,11 @@ function SdkApplicationView({
             <button
               className="primary-action"
               type="button"
-              disabled={working}
+              disabled={working && !recovery.signIn}
               onClick={() =>
                 recovery.reload
                   ? window.location.reload()
-                  : void act(recovery.run)
+                  : void act(recovery.run, recovery.signIn)
               }
             >
               {recovery.label}
@@ -419,8 +426,8 @@ function SdkApplicationView({
 type Run = (options: { signal: AbortSignal }) => Promise<unknown>;
 type Recovery =
   | { label: string; href: string }
-  | { label: string; run: Run; reload?: false }
-  | { label: string; run: Run; reload: true };
+  | { label: string; run: Run; reload?: false; signIn?: true }
+  | { label: string; run: Run; reload: true; signIn?: false };
 
 /** The SDK's suggested action as one Planner control. Readiness problems
  * re-check rather than reload; an unknown action offers no pretend fix. */
@@ -428,7 +435,6 @@ function recoveryAction(
   problem: MdbaseErrorDescription,
   ports: {
     readiness: boolean;
-    authorize: Run;
     restart: Run;
     assess: Run;
     approve: Run;
@@ -439,7 +445,7 @@ function recoveryAction(
   const label = problem.actionLabel ?? "Try again";
   switch (problem.action) {
     case "sign_in":
-      return { label, run: ports.authorize };
+      return { label, run: ports.approve, signIn: true };
     case "approve":
       return { label, run: ports.approve };
     case "set_up":

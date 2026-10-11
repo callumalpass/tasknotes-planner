@@ -94,6 +94,7 @@ function fixture(
   const application: MdbaseApplication = {
     setup: setup ?? original.setup,
     deleteCollection: original.deleteCollection,
+    requestAccess: original.requestAccess,
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
@@ -502,12 +503,17 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(h.application.close).not.toHaveBeenCalled();
   });
 
-  it("delegates authorize synchronously in the gesture, with no app window/popup/start sequence", () => {
+  it("delegates approve synchronously in the gesture, with no app window/popup/start sequence", () => {
     const h = fixture();
+    vi.mocked(h.application.approve).mockImplementation(async () => {
+      h.publish({ status: "authorizing" });
+      return h.application.getSnapshot();
+    });
     const open = vi.spyOn(window, "open");
     render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(h.application.authorize).toHaveBeenCalledOnce();
+    expect(h.application.approve).toHaveBeenCalledOnce();
+    expect(h.application.authorize).not.toHaveBeenCalled();
     expect(h.application.start).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
     expect(screen.getByRole("status").textContent).toContain(
@@ -728,7 +734,7 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     );
     expect(screen.queryByText(/Opening/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    await waitFor(() => expect(h.application.authorize).toHaveBeenCalledOnce());
+    await waitFor(() => expect(h.application.approve).toHaveBeenCalledOnce());
     view.unmount();
 
     const unknown = fixture({
