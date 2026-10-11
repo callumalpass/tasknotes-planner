@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`6a576a5f25231333bd899274ad6fed91f54a19ab`, original `sdk-dev-6a576a5f` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
+`41c26ca73f6c97551ba4732c35627d626b927f03`, original `sdk-dev-41c26ca7` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -121,10 +121,12 @@ fabricated email.
 
 When the
 SDK reports `setup_required` (status or readiness assessment), the gate offers
-**Set up TaskNotes Planner**, which calls only the SDK's `configure()` with the
-caller's signal; the SDK configures the current scope from Planner's canonical
-declaration. Planner keeps no setup engine and never infers READY from a
-configure result: the ledger still waits for current SDK readiness. A failed or
+**Set up TaskNotes Planner**, which reads the SDK setup plan and reviews its
+plain summary, changes, conflicts and refusal. Confirm applies that original
+plan; nothing-to-review keeps `configure()`. Unknown outcomes re-assess through
+the SDK without claiming no writes or automatically submitting a fresh mutation.
+Planner keeps no setup engine and never infers READY from a configure/apply
+result: the ledger still waits for current SDK readiness. A failed or
 missing settled readiness check offers **Check again**, which calls the SDK's
 `assess()` with the current caller signal. Incompatible collections and retired
 connections show a clear explanation and **Choose another collection**, rather
@@ -150,9 +152,9 @@ exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The original DEV/LAB intake `sdk-dev-6a576a5f` is installed through a
+The original DEV/LAB intake `sdk-dev-41c26ca7` is installed through a
 normal file dependency. It bundles the original beta129 protocol archive
-(`3c14fc913a80`); Planner retains its direct `d765e675c3da` protocol dependency
+(`c280cd194ffd`); Planner retains its direct `d765e675c3da` protocol dependency
 for legacy packages. This archive has no vendor warnings; the earlier unused
 protocol exception is not carried forward. Both original archives remain immutable. There are no aliases, API casts,
 private source copies or package rewrites. This intake permits source typechecking,
@@ -165,9 +167,9 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `6a576a5f25231333bd899274ad6fed91f54a19ab`, original `6a` cut:
-4289200-byte SDK archive, SHA256
-`00ee3484b4d70b9df4b9fab72c6fcadf24476c1b5834eef6d4d9a4a9281ec56f`
+SDK source `41c26ca73f6c97551ba4732c35627d626b927f03`, original `41c` cut:
+3978820-byte SDK archive, SHA256
+`f8a00e2364d6adacb8a8ddcfa219f4ae5a5451bfd817758a9022ca32fb9ef1e3`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
 plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
@@ -178,9 +180,11 @@ MemoryReplica serves contract-scoped records from declared `MemoryContract`s in
 `38001079`; `n1` adds atomic contract body/field updates and promotion, explicit
 fixture digests; `4b` delivers public error/status helpers and portable/native-origin
 sign-in APIs; `6a` includes registration-refusal guidance, Private-collection
-availability reasons and collection deletion APIs, with the original 3553905-byte
-native runtime matching
-`08bb2dfcfd48e663147a7d1f3ebf2728b81bd82ac59183307c2cd7bc30c9ab67`).
+availability reasons and collection deletion APIs; `993` adds owner-binding fixes
+and public setup assessment, with the original 3555291-byte native runtime matching
+`9f90af73e1591cafe9c35bdd42f18ae49d5a91a0186e78695e841fecabcd833a`;
+`41c` adds per-type readiness options, SDK user-facing title/message/action labels,
+log-service CORS support and a thin-client entry).
 The direct legacy protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces

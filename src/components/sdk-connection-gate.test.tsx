@@ -10,6 +10,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MdbasePeopleClient,
+  describeError,
   mdbaseError,
   toPlain,
   type MdbaseApplication,
@@ -790,7 +791,11 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
       "needs TaskNotes setup",
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Set up TaskNotes Planner" }),
+      screen.getByRole("button", {
+        name:
+          describeError("setup_required")?.actionLabel ??
+          "Missing SDK setup label",
+      }),
     );
     return { ...h, setup };
   }
@@ -886,7 +891,11 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     const h = setupFixture(async () => h.application.getSnapshot());
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
     expect(
-      screen.getByRole("button", { name: "Set up TaskNotes Planner" }),
+      screen.getByRole("button", {
+        name:
+          describeError("setup_required")?.actionLabel ??
+          "Missing SDK setup label",
+      }),
     ).toBeVisible();
     expect(h.setup.apply).not.toHaveBeenCalled();
     expect(h.application.configure).not.toHaveBeenCalled();

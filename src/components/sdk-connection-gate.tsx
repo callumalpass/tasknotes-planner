@@ -339,7 +339,7 @@ function SdkApplicationView({
               disabled={working}
               onClick={() => setReviewing(true)}
             >
-              Set up TaskNotes Planner
+              {describeError("setup_required")?.actionLabel}
             </button>
           ) : null}
           {paired ? (

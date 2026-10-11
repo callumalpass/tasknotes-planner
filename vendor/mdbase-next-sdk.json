@@ -1,17 +1,17 @@
 {
   "package": "@mdbase-dev/sdk",
   "version": "0.0.0",
-  "artifact": "mdbase-dev-sdk-dev-6a576a5f.tgz",
-  "cutIdentity": "sdk-dev-6a576a5f",
-  "sourceCommit": "6a576a5f25231333bd899274ad6fed91f54a19ab",
+  "artifact": "mdbase-dev-sdk-dev-41c26ca7.tgz",
+  "cutIdentity": "sdk-dev-41c26ca7",
+  "sourceCommit": "41c26ca73f6c97551ba4732c35627d626b927f03",
   "label": "dev intake, not release-qualified",
-  "sha256": "00ee3484b4d70b9df4b9fab72c6fcadf24476c1b5834eef6d4d9a4a9281ec56f",
-  "integrity": "sha512-eNiFZ6wmlzvMmCxELzThijGKwRANtvKEymQCsxveygvLPImsSsUGUVte15el7LtZSoLJsBMh4sp+lsEPfo4Jsw==",
-  "bytes": 4289200,
+  "sha256": "f8a00e2364d6adacb8a8ddcfa219f4ae5a5451bfd817758a9022ca32fb9ef1e3",
+  "integrity": "sha512-riy0hLonke3g88Ahr6qosefs6fAtoHmpZwRY/msTdl++yq65o0+yXWnwZtdRYKuy3GFgYmFTd9UGrFHTZcZUjA==",
+  "bytes": 3978820,
   "native": {
     "available": true,
-    "bytes": 3553905,
-    "sha256": "08bb2dfcfd48e663147a7d1f3ebf2728b81bd82ac59183307c2cd7bc30c9ab67"
+    "bytes": 3555291,
+    "sha256": "9f90af73e1591cafe9c35bdd42f18ae49d5a91a0186e78695e841fecabcd833a"
   },
   "releaseQualified": false,
   "localDependencies": [
@@ -27,10 +27,10 @@
   "bundledOriginalDependencies": [
     {
       "name": "@mdbase-dev/connect-protocol",
-      "file": "vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-3c14fc913a80.tgz",
-      "bytes": 71190,
-      "sha256": "3dc48b6b9dbf8651b6c300ab5896408ff90a0e1a7b8f1312e27442914b50ca83",
-      "sri": "sha512-1cGQC+RKazMrL6NVkt6gFR6vElOruPJb0wLYjtVZU69C88FChTzkr9o12UvoKMFVFUpi0JDa4RPD/iNHUb7d7A=="
+      "file": "vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-c280cd194ffd.tgz",
+      "bytes": 107322,
+      "sha256": "cd1e15236ab7e25c511a4ba13af6a9df23f4b41715161479bba97b0445e1c138",
+      "sri": "sha512-c0iOOWEcNJRstdyUJ6aqJ3puVR5C9jXW4MBHmQnHI2c4vgOeKi5VWfiuueWx3ArvtwB3nPuAaXHhll/OKH/+Yw=="
     }
   ],
   "vendorWarnings": [],
