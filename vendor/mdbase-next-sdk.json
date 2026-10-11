@@ -1,11 +1,11 @@
 {
   "package": "@mdbase-dev/sdk",
   "version": "0.0.0",
-  "artifact": "mdbase-dev-sdk-ab00e5eb.tgz",
-  "sourceCommit": "ab00e5ebdad281119776837b89ad3bd20541e861",
+  "artifact": "mdbase-dev-sdk-7193fd0d.tgz",
+  "sourceCommit": "7193fd0d396dfec3b339fd3b353248bf3354d963",
   "label": "dev intake, not release-qualified",
-  "sha256": "58ab04f935a8b7ac0470cb568a7928e5c1cd7e20ac505361c1dbd7c8328358eb",
-  "integrity": "sha512-zSYyTQVfi5JXP0/hRZlwANSwDLvGul0FSIwVOK3fz3u+jAn8A2TrFUEFbAiLfPbOC2TRFhRKVQKO38wyjxEo/g==",
+  "sha256": "2d03c9ddd75d844861ebf864cb7c0c4c51bbfed59965d8f29573053467ccfd03",
+  "integrity": "sha512-+Q8ErMBAFA7xHLLuxO+H0E9j64wJITgyGcTAbg2AULgCgOy9LLV+m3eGTgxSp95AhC4tEZvL/QcJV9lLOk+DmA==",
   "releaseQualified": false,
   "localDependencies": [
     {
@@ -19,8 +19,10 @@
   ],
   "includesPublicApplicationEntry": true,
   "includesPublicApplicationFixture": true,
-  "applicationRuntimeAvailable": false,
-  "sourceOnly": true,
+  "applicationRuntimeAvailable": true,
+  "sourceOnly": false,
   "nativeRuntimeQualified": false,
-  "perAppRuntimeTrustOriginAndOperationsQualified": false
+  "perAppRuntimeTrustOriginAndOperationsQualified": false,
+  "nativeAssetsPackaged": true,
+  "productionTrustAvailable": false
 }

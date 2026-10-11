@@ -73,9 +73,9 @@ are available and tested.
 
 The integration target is one public SDK entry: declare the application, obtain
 its lifecycle session, authorize in a user gesture, select a collection, and use
-its current scoped connection for records, files and people. This entry is still
-being implemented; the development archive provides its public types and an
-explicitly unavailable runtime shell, not the complete composition.
+its current scoped connection for records, files and people. Since `7193fd0d`
+the development archive carries the live composition (LAB environment only);
+it is not release- or native-qualified.
 TaskNotes is the first consumer and Planner follows after qualified delivery.
 
 Planner supplies only its declaration: identity, name, origin/environment and
@@ -103,11 +103,11 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`ab00e5ebdad281119776837b89ad3bd20541e861` (first ported at `e519009a`, then `563dc868`). `createPlannerApplication`
-supplies only the unchanged manifest, name, origin, environment and a caller's
-actual registered application ID; no prototype UUID or storage override is used.
-`App` accepts that SDK entry optionally. Native mode does not import or instantiate
-the legacy session; the default entry still uses the existing Connect runtime.
+`7193fd0d396dfec3b339fd3b353248bf3354d963` (first ported at `e519009a`, then `563dc868`, `ab00e5eb` and `8a557ad6`). `createPlannerApplication`
+supplies only the unchanged manifest (logical ID, name, homepage origin) and the
+environment; the SDK registers the manifest and rebinds to the actual registered
+ID before any storage. No prototype UUID or storage override is used. `App`
+accepts that SDK entry optionally.
 
 The existing ledger receives `NextPlannerRepository` over the selected
 connection's **same borrowed client**, only when the SDK reports current semantic
@@ -119,7 +119,7 @@ publish sign-out for a replacement owner. Identity uses the SDK's existing
 canonical email or GitHub provider/login fields, never an account UUID or a
 fabricated email.
 
-The public entry currently has an explicitly unavailable runtime shell. When the
+When the
 SDK reports `setup_required` (status or readiness assessment), the gate offers
 **Set up TaskNotes Planner**, which calls only the SDK's `configure()` with the
 caller's signal; the SDK configures the current scope from Planner's canonical
@@ -128,13 +128,24 @@ configure result: the ledger still waits for current SDK readiness. The SDK's
 `assess()` is not called by the UI; readiness arrives through the snapshot.
 Registered binding and popup reopen/expiry helpers remain producer work.
 
-**Live hookup (pending the shared SDK entry singleton):** `createPlannerApplication`
-and `App`'s optional `sdk` prop are the seam. The entry point still constructs the
-existing Connect session; the switch to the shared singleton, its registered
-application ID and environment are deliberately not wired here. Old local data and pending writes need no cutover handoff for any app;
-ongoing new-SDK recovery remains mandatory.
+A link that requests an unapproved collection (`selection.state`
+`approval_required`) or an invalid one offers **Approve this collection** or
+**Choose another collection** (`chooseAnother()`); Planner never falls back to
+another collection.
 
-The development intake at `ab00e5eb` is installed through normal file
+**Live hookup:** `plannerSdk()` is the page's one `MdbaseConnect`. Builds with
+`VITE_MDBASE_ENV=lab` lazily render `App` over it (`components/root.tsx`); other
+builds keep the existing Connect runtime because the SDK refuses production
+(`application_production_trust_unavailable`). A LAB build also needs
+`TASKNOTES_PLANNER_URL` set to its served origin so the manifest homepage matches.
+`vite.config.ts` excludes the SDK from dev pre-bundling and emits ES workers.
+**Blocked at `7193fd0d`:** the production build fails inside the SDK bundle (it
+references an unshipped `sqlite3-worker1.mjs`), and the SDK's native wasm is not
+bundler-emitted; both are SDK fixes, with no app workaround. Old local data and
+pending writes need no cutover handoff for any app; ongoing new-SDK recovery
+remains mandatory.
+
+The development intake at `7193fd0d` is installed through normal file
 dependencies on both its SDK archive and its original beta129 protocol archive
 (source `d765e675c3da`). The protocol tar must also be in the consumer's `vendor/` directory;
 its transitive file path is consumer-relative. There are no aliases, API casts,
@@ -148,11 +159,13 @@ end-to-end operation. No deployment or LAB pin change is enabled.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `ab00e5ebdad281119776837b89ad3bd20541e861`: 1392332-byte
+SDK source `7193fd0d396dfec3b339fd3b353248bf3354d963`: 3799591-byte
 SDK archive, SHA256
-`58ab04f935a8b7ac0470cb568a7928e5c1cd7e20ac505361c1dbd7c8328358eb`
-(public application entry types unchanged from `563dc868`; adds SDK collection
-selection and `files.grant`).
+`2d03c9ddd75d844861ebf864cb7c0c4c51bbfed59965d8f29573053467ccfd03`
+(live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
+`snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
+native runtime/SQLite wasm, `describe({ definitions })`, collection selection
+and `files.grant`).
 Its original protocol beta129 dependency archive (source `d765e675c3da`) is
 70702 bytes with SHA256
 `2769616d8ba1a9cbb3dd689fa1ca0b1e2b42e5442634635f2cd4a87f5ec9020f`; it replaces
@@ -161,8 +174,8 @@ the legacy Connect packages. SHA256/SHA512 were checked against the release
 manifest. Relative to `e519009a`, the entry adds `assess()`, `configure()` and
 `MdbaseApplicationConnection.displayName`, and the `@mdbase-dev/sdk/testing`
 `createApplicationFixture` seam.
-Neither the public unavailable shell nor this dependency change enables native
-sign-in, READY, deployment or a change to the held LAB SDK.
+This dependency change does not by itself qualify native sign-in, READY,
+deployment or a change to the held LAB SDK.
 
 The previous original release-qualified `b9965703` archive is retained, including SDK837's
 host/caller lifetime composition fix and SDK832's optional bounded
