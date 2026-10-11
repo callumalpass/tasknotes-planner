@@ -6,11 +6,17 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  MdbaseApplication,
-  MdbaseApplicationSnapshot,
+import { StrictMode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MdbasePeopleClient,
+  toPlain,
+  type MdbaseApplication,
+  type MdbaseApplicationConnection,
+  type MdbaseApplicationSnapshot,
+  type MdbaseClient,
 } from "@mdbase-dev/sdk";
+import { nativePlannerFixture } from "../test/native-planner-fixture";
 import { SdkConnectionGate, type PlannerSdk } from "./sdk-connection-gate";
 import { App } from "./app";
 
@@ -100,10 +106,87 @@ const collections: MdbaseApplicationSnapshot["collections"] = [
   { collectionId: "selected", displayName: "Selected work", role: "owner" },
   { collectionId: "other", displayName: "Other work", role: "editor" },
 ];
+const clients: MdbaseClient[] = [];
+const originalScrollTo = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollTo",
+);
+beforeEach(() => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: false })),
+  );
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: vi.fn(),
+  });
+});
 afterEach(() => {
   cleanup();
+  for (const client of clients.splice(0)) client.close();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  if (originalScrollTo)
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
+
+async function readyFixture(title?: string) {
+  const f = await nativePlannerFixture(title);
+  clients.push(f.client);
+  const ready = {
+    checking: false,
+    assessment: { status: "ready" as const, problem: null },
+    problem: null,
+  };
+  const omitted = { checking: false, assessment: null, problem: null };
+  const h = fixture({
+    status: "ready",
+    selectedCollectionId: f.client.hello.collection,
+    collections: [
+      {
+        collectionId: f.client.hello.collection,
+        displayName: "Native work",
+        role: "owner",
+      },
+    ],
+    readiness: {
+      ...ready,
+      facets: {
+        capabilities: ready,
+        contracts: ready,
+        configuration: ready,
+        files: omitted,
+        people: omitted,
+        notifications: omitted,
+      },
+    },
+  });
+  const metadata = vi.fn(async () => {
+    throw new Error("UI must not infer people consent");
+  });
+  const connection: MdbaseApplicationConnection = {
+    id: f.client.hello.collection,
+    scope: {
+      account: "fixture-account",
+      installation: "fixture-installation",
+      collection: f.client.hello.collection,
+    },
+    generation: "fixture-generation",
+    records: f.client,
+    files: f.client.files,
+    people: new MdbasePeopleClient(f.client, {
+      collection: f.client.hello.collection,
+      request: metadata,
+      isCurrent: () => true,
+    }),
+    isCurrent: vi.fn(() => true),
+  };
+  vi.mocked(h.sdk.connection).mockImplementation((id) =>
+    id === connection.id ? connection : null,
+  );
+  return { ...f, ...h, connection, metadata };
+}
 
 describe("Planner public application surface (typed UI stand-ins, not runtime acceptance)", () => {
   it("the native App entry never imports or instantiates the legacy session", () => {
@@ -111,6 +194,185 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     render(<App sdk={h.sdk} />);
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
     expect(h.application.start).not.toHaveBeenCalled();
+  });
+
+  it("StrictMode startup replays UI effects without a second start or SDK close", async () => {
+    const h = fixture({ status: "not_started" });
+    const view = render(
+      <StrictMode>
+        <SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(h.application.start).toHaveBeenCalledOnce());
+    expect(h.application.close).not.toHaveBeenCalled();
+    expect(h.listeners.size).toBe(1);
+    view.unmount();
+    expect(h.listeners.size).toBe(0);
+    expect(h.application.setForeground).toHaveBeenLastCalledWith(false);
+    expect(h.application.close).not.toHaveBeenCalled();
+  });
+
+  it("renders and edits through the SAME SDK testing client under StrictMode, without accessor consent expansion", async () => {
+    const h = await readyFixture();
+    const close = vi.spyOn(h.client, "close");
+    const update = vi.spyOn(h.client, "update");
+    const get = vi.spyOn(h.client, "get");
+    const watchChanges = vi.spyOn(h.client, "watchChanges");
+    const view = render(
+      <StrictMode>
+        <SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />
+      </StrictMode>,
+    );
+    const complete = await screen.findByRole("button", {
+      name: "Complete Plan the SDK port",
+    });
+    expect(screen.getByRole("button", { name: /Native work/ })).toBeTruthy();
+    expect(get).not.toHaveBeenCalled();
+    expect(h.metadata).not.toHaveBeenCalled();
+    fireEvent.click(complete);
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    await waitFor(async () => {
+      const saved = await h.client.get(h.record.id, { effective: true });
+      const status = saved.frontmatter.get("status");
+      if (status === undefined)
+        throw new Error("Confirmed task lost its status");
+      expect(toPlain(status)).toBe("done");
+      expect(saved.state.state).toBe("confirmed");
+    });
+    const watch = watchChanges.mock.results.find(
+      (result) => result.type === "return",
+    )?.value;
+    expect(watch?.state).toBe("active");
+    view.unmount();
+    expect(watch?.state).toBe("closed");
+    expect(close).not.toHaveBeenCalled();
+    expect(h.application.close).not.toHaveBeenCalled();
+    expect(h.metadata).not.toHaveBeenCalled();
+  });
+
+  it("semantic demotion unmounts the ledger and releases its original watch, not the SDK client", async () => {
+    const h = await readyFixture();
+    const close = vi.spyOn(h.client, "close");
+    const watchChanges = vi.spyOn(h.client, "watchChanges");
+    render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+    await screen.findByRole("button", { name: "Complete Plan the SDK port" });
+    const watch = watchChanges.mock.results.find(
+      (result) => result.type === "return",
+    )?.value;
+    await act(async () =>
+      h.publish({
+        readiness: {
+          ...h.application.getSnapshot().readiness,
+          checking: true,
+          assessment: null,
+        },
+      }),
+    );
+    expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Opening Native work");
+    expect(watch?.state).toBe("closed");
+    expect(close).not.toHaveBeenCalled();
+    expect(h.application.close).not.toHaveBeenCalled();
+  });
+
+  it.each(["unknown", "checking", "incompatible", "setup_required"] as const)(
+    "does not allocate a repository or read records when SDK readiness is %s",
+    async (state) => {
+      const h = await readyFixture();
+      const initial = h.application.getSnapshot().readiness;
+      h.publish({
+        readiness: {
+          ...initial,
+          checking: state === "checking",
+          assessment:
+            state === "unknown" || state === "checking"
+              ? null
+              : { status: state, problem: null },
+        },
+      });
+      render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+      await act(async () => undefined);
+      expect(h.client.describe).not.toHaveBeenCalled();
+      expect(h.client.listAppBasesViews).not.toHaveBeenCalled();
+      expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
+    },
+  );
+
+  it("a retired connection cannot retain the ledger merely because its old readiness says ready", async () => {
+    const h = await readyFixture();
+    render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+    await screen.findByRole("button", { name: "Complete Plan the SDK port" });
+    vi.mocked(h.connection.isCurrent).mockReturnValue(false);
+    await act(async () => h.publish({}));
+    expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Complete Plan the SDK port" }),
+    ).toBeNull();
+  });
+
+  it("refuses a public facade whose records client belongs to another collection", async () => {
+    const h = await readyFixture();
+    const selectedId = "other-collection";
+    h.publish({
+      selectedCollectionId: selectedId,
+      collections: [
+        {
+          collectionId: selectedId,
+          displayName: "Wrong client",
+          role: "owner",
+        },
+      ],
+    });
+    vi.mocked(h.sdk.connection).mockReturnValue({
+      ...h.connection,
+      id: selectedId,
+    });
+    render(<SdkConnectionGate sdk={h.sdk} onDemo={vi.fn()} />);
+    await act(async () => undefined);
+    expect(h.client.describe).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Timeline" })).toBeNull();
+  });
+
+  it("late old-client catalog delivery cannot populate the replacement collection", async () => {
+    const original = await readyFixture("Old task must not return");
+    const replacement = await readyFixture("Current replacement task");
+    let release!: (catalog: typeof original.catalog) => void;
+    vi.mocked(original.client.describe).mockReturnValue(
+      new Promise<typeof original.catalog>((resolve) => {
+        release = resolve;
+      }),
+    );
+    vi.mocked(original.sdk.connection).mockImplementation((id) =>
+      id === original.connection.id
+        ? original.connection
+        : id === replacement.connection.id
+          ? replacement.connection
+          : null,
+    );
+    const close = vi.spyOn(original.client, "close");
+    render(<SdkConnectionGate sdk={original.sdk} onDemo={vi.fn()} />);
+    await waitFor(() => expect(original.client.describe).toHaveBeenCalled());
+    const originalSignal = vi.mocked(original.client.describe).mock.calls[0][0];
+    await act(async () =>
+      original.publish({
+        selectedCollectionId: replacement.connection.id,
+        collections: [
+          {
+            collectionId: replacement.connection.id,
+            displayName: "Replacement",
+            role: "owner",
+          },
+        ],
+      }),
+    );
+    await screen.findByRole("button", {
+      name: "Complete Current replacement task",
+    });
+    expect(originalSignal?.aborted).toBe(true);
+    await act(async () => release(original.catalog));
+    expect(screen.queryByText("Old task must not return")).toBeNull();
+    expect(screen.getByRole("button", { name: /Replacement/ })).toBeTruthy();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it("starts only the borrowed singleton and aborts caller/subscription on UI retirement", async () => {
