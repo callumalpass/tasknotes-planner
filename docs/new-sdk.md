@@ -69,6 +69,36 @@ Planner does not implement private auth/route/grant protocols or a second setup
 engine. The application will not switch its data path until those dependencies
 are available and tested.
 
+## Planned SDK application entry
+
+The integration target is one public SDK entry: declare the application, obtain
+its lifecycle session, authorize in a user gesture, select a collection, and use
+its current scoped connection for records, files and people. This entry is still
+being implemented; the pinned archive does not provide this complete composition.
+TaskNotes is the first consumer and Planner follows after qualified delivery.
+
+Planner supplies only its declaration: identity, name, origin/environment and
+manifest. The SDK owns authenticated native assets/trust, Worker and SQL plumbing,
+DB names, setup journal, current semantic/catalog readiness, original recovery
+and the existing people directory engine. New namespaces are SDK-derived from
+registered app identity. Optional storage compatibility is declaration data for
+existing installations, not an app-owned engine or permission to replace them.
+Planner has no original native journal requiring a compatibility override.
+
+`dev.tasknotes.planner` is manifest identity, not evidence of a registered native
+application UUID. The typed registration binding must be settled before database
+allocation; prototype UUIDs or namespace strings cannot stand in for registration.
+The scoped records service must retain the same public borrowed `MdbaseClient`
+used by `NextPlannerRepository` and `NextPlannerViews`, including receipts,
+watches and native AppBases/source APIs. Accessors do not add consent: Planner's
+manifest omits files and people. Only the canonical shared manifest compiler may
+interpret authorization; no duplicate compiler or implicit widening is supplied.
+
+The local per-app loader/factory/inventory prototypes are frozen, source-only
+experiments, not an integration recipe. Do not copy them into another app or the
+SDK. Native open/readiness/recovery requires qualified delivery and genuine local
+acceptance, independently of source tests or archive qualification.
+
 ## Artifact and checks
 
 The SDK tarball and its source commit/SHA256 are recorded in
@@ -96,12 +126,15 @@ source-parser, sign-in, or end-to-end evidence. Run `pnpm verify` and
 
 ## Public SDK sign-in UI
 
-`createNativeSignIn(options)` uses the pinned SDK's actual `AppWebSignInSession`.
-All release, app identity, origin, runtime, locks and original signal inputs must
-be supplied explicitly by the app owner; no guessed build configuration is used.
-Pass its binding and an `onSignedOut` callback through `ConnectionGate`'s optional
-`nativeSignIn` prop. The owner closes the borrowed SDK session on teardown and
-creates a fresh SDK instance only after confirmed close or explicit sign-in.
+The existing source-only `createNativeSignIn(options)` binding uses the pinned
+SDK's actual `AppWebSignInSession`. Its lower-level explicit release, identity,
+origin, runtime, locks and signal inputs support conformance checks, not the
+planned app integration. They will move behind the shared application entry;
+apps must not add new runtime, Worker, SQL or setup glue to complete this binding.
+The existing screen accepts its binding and an `onSignedOut` callback through
+`ConnectionGate`'s optional `nativeSignIn` prop. The owner closes the borrowed SDK
+session on teardown and creates a fresh instance only after confirmed close or
+explicit sign-in.
 
 The UI reserves a named 620×760 Connect popup synchronously before SDK
 start/expiry renewal, using the same app-owned pattern as TaskNotes. The trusted
@@ -126,5 +159,7 @@ promise is displayed without its real capability. A generic SDK refusal does
 not prove a user decline, so the UI does not invent that state.
 
 Focused presentation and React forwarding tests use labelled SDK stand-ins, not
-native sign-in/LAB qualification. Authenticated build inputs and qualified shared
-factory/setup composition remain required before a native runnable URL exists.
+native sign-in/LAB qualification. The public application entry, authenticated SDK
+asset delivery, registered identity and current setup/people composition remain
+required before a native runnable URL exists. The future entry must retain this
+screen's popup, selection and lifetime behavior without per-app infrastructure.
