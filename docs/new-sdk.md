@@ -103,7 +103,7 @@ acceptance, independently of source tests or archive qualification.
 ## Public-entry source port
 
 The port branch targets the public application entry at SDK dev source
-`53643b299c3dd2da4145b082ee08bd8a1a04516c`, original `sdk-dev-53643b29` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
+`b1c47a32790b719e8baca0b5cc58d6486772193b`, original `sdk-dev-b1c47a32` cut (earlier pins, including distinct `sdk-dev-2e2ae687-n1`, remain in history). `createPlannerApplication`
 supplies only the unchanged manifest (logical ID, name, homepage origin) and the
 environment; the SDK registers the manifest and rebinds to the actual registered
 ID before any storage. No prototype UUID or storage override is used. `App`
@@ -152,7 +152,7 @@ exercised. Old local data and
 pending writes need no cutover handoff for any app; ongoing new-SDK recovery
 remains mandatory.
 
-The original DEV/LAB intake `sdk-dev-53643b29` is installed through a
+The original DEV/LAB intake `sdk-dev-b1c47a32` is installed through a
 normal file dependency. It bundles the original beta129 protocol archive
 (`c280cd194ffd`); Planner retains its direct `d765e675c3da` protocol dependency
 for legacy packages. This archive has no vendor warnings; the earlier unused
@@ -172,9 +172,9 @@ SDK `approve()`. Planner supplies no pairing or renewal engine.
 The SDK tarball and its source commit/SHA256 are recorded in
 `vendor/mdbase-next-sdk.json`. It is supplied by the release workstream, not npm.
 The current pin is the **development intake, not release-qualified**, from exact
-SDK source `53643b299c3dd2da4145b082ee08bd8a1a04516c`, original `4c` cut:
-4115448-byte SDK archive, SHA256
-`593471011a33bc73c93740fd3fa3eb06a02407bb8b6f8a28e2ed0f8995038189`
+SDK source `b1c47a32790b719e8baca0b5cc58d6486772193b`, original `4c` cut:
+4115691-byte SDK archive, SHA256
+`d526a5303bae7d08ec04fa9641340221a3875dc78b68434367ab4fbfba2d6d98`
 (live `MdbaseConnect` entry: registration, storage, Worker and runtime, with
 plain-Vite-emittable Worker and native assets since `d53d7d76`,
 `snapshot.selection` and `approve`/`reauthorize`/`chooseAnother`; packages the
