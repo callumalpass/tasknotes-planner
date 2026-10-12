@@ -798,6 +798,8 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(screen.getByRole("status")).toHaveTextContent(
       "needs TaskNotes setup",
     );
+    // Signed in: the only primary action is setup, never a second sign-in.
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
         name:

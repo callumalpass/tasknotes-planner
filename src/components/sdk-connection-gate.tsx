@@ -287,7 +287,11 @@ function SdkApplicationView({
           !problem &&
           !retryReadiness &&
           !incompatible &&
-          !retired ? (
+          !retired &&
+          // A signed-in collection that needs setup or approval has its own
+          // action below; a second "Sign in" there re-runs authorization.
+          !setup &&
+          !approval ? (
             <button
               className="primary-action"
               type="button"
