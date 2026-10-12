@@ -23,8 +23,9 @@ export function plannerDeclaration(
 let entry: Mdbase | null = null;
 
 /** The page's one SDK entry (LAB builds only, see root.tsx). Construction
- * performs no IO; the SDK follows page visibility itself. */
+ * performs no IO. No followVisibility: this SDK cut calls it before the entry
+ * exists; foreground defaults to on. */
 export function plannerMdbase(): Mdbase {
-  entry ??= createMdbase(plannerDeclaration("lab"), { followVisibility: true });
+  entry ??= createMdbase(plannerDeclaration("lab"));
   return entry;
 }
