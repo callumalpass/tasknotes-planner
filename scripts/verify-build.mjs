@@ -21,6 +21,16 @@ export async function verifyPlannerBuild({
     throw new Error(`Planner manifest does not declare ${appOrigin}.`);
 
   await readFile(resolve(root, "auth", "mdbase", "callback", "index.html"));
+  // Pages ignores `/* /index.html` and serves 404.html for deep routes.
+  const redirects = (await readFile(resolve(root, "_redirects"), "utf8"))
+    .trim()
+    .split("\n");
+  if (
+    redirects.at(-1) !== "/* / 200" ||
+    !redirects.includes("/assets/* /assets/:splat 200") ||
+    redirects.some((rule) => /^\/\*\s+\/index(\.html)?\b/.test(rule))
+  )
+    throw new Error("Planner _redirects does not serve deep routes.");
   const scripts = (await readdir(resolve(root, "assets")))
     .filter((file) => file.endsWith(".js"))
     .map((file) => resolve(root, "assets", file));
