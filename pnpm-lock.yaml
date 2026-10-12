@@ -21,8 +21,8 @@ importers:
         specifier: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
         version: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
       "@mdbase-dev/sdk":
-        specifier: file:vendor/mdbase-dev-sdk-dev-cf294bdb.tgz
-        version: file:vendor/mdbase-dev-sdk-dev-cf294bdb.tgz
+        specifier: file:vendor/mdbase-dev-sdk-dev-a965bd26.tgz
+        version: file:vendor/mdbase-dev-sdk-dev-a965bd26.tgz
       "@tasknotes/model":
         specifier: file:vendor/tasknotes-model-0.3.0-rc.11.tgz
         version: file:vendor/tasknotes-model-0.3.0-rc.11.tgz
@@ -501,11 +501,11 @@ packages:
       }
     version: 0.1.0-beta.96
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-cf294bdb.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-a965bd26.tgz":
     resolution:
       {
-        integrity: sha512-Gr40XybIqzTDLlhFCCyffzmokNbA8vvNk2qwy1T83QjPR1O3nBn7pcYmqmTUfpcgPE7N6k6pmuPhlj7kV5YufA==,
-        tarball: file:vendor/mdbase-dev-sdk-dev-cf294bdb.tgz,
+        integrity: sha512-A0XWGcpsp//iQu39ocx60vGs3ExiGT7QZ7VpePgiD7i6Z9yA2DFOY3mLUS8GWnZ4knn0SZqzKJ7GVHzjSoDr3Q==,
+        tarball: file:vendor/mdbase-dev-sdk-dev-a965bd26.tgz,
       }
     version: 0.0.0
     engines: { node: ">=20" }
@@ -2574,7 +2574,7 @@ snapshots:
     dependencies:
       "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-cf294bdb.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-a965bd26.tgz":
     dependencies:
       "@noble/ciphers": 2.4.0
       "@noble/curves": 2.4.0
