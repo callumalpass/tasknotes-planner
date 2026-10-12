@@ -19,11 +19,11 @@ const app = {
 };
 
 /** Planner over the page's one SDK entry (LAB builds; see root.tsx). The
- * shared collection UI owns sign-in, the collection list, setup and problems. */
+ * shared collection UI owns sign-in, the collection list, setup and problems,
+ * and starts the entry (never closed here: it is the page's singleton). */
 export default function SdkApp({ mdbase: supplied }: { mdbase?: Mdbase } = {}) {
   const [mdbase] = useState(() => supplied ?? plannerMdbase());
   const { demo, enter, leave } = useSampleMode();
-  useStartOnce(mdbase);
   const ui = useMemo<CollectionUiOptions>(() => ({ mdbase, app }), [mdbase]);
   if (demo)
     return (
@@ -35,10 +35,12 @@ export default function SdkApp({ mdbase: supplied }: { mdbase?: Mdbase } = {}) {
   return (
     <CollectionGate
       {...ui}
-      extraActions={
-        <button className="text-action" type="button" onClick={enter}>
-          Try sample tasks
-        </button>
+      extraActions={(view) =>
+        view.kind === "signed_out" ? (
+          <button className="text-action" type="button" onClick={enter}>
+            Try sample tasks
+          </button>
+        ) : null
       }
     >
       {(connection) => (
@@ -50,17 +52,6 @@ export default function SdkApp({ mdbase: supplied }: { mdbase?: Mdbase } = {}) {
       )}
     </CollectionGate>
   );
-}
-
-/** The entry is the page's borrowed singleton: started once, never closed here. */
-function useStartOnce(mdbase: Mdbase) {
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    // Failures are on the snapshot; the gate shows them with their fix.
-    void mdbase.start().catch(() => undefined);
-  }, [mdbase]);
 }
 
 /** One repository per collection generation; re-checks keep the workspace. */

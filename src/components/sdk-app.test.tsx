@@ -6,7 +6,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Mdbase } from "@mdbase-dev/sdk";
+import {
+  createTestMdbase,
+  type TestAppPreset,
+  type TestMdbase,
+} from "@mdbase-dev/sdk/testing";
 
 vi.mock("../data/next-planner-repository", async () => {
   const { DemoPlannerRepository } = await import("../data/demo-repository");
@@ -45,70 +49,48 @@ afterEach(() => {
   else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
 
-const collection = {
-  collectionId: "c1",
-  displayName: "Launch plan",
-  role: "owner",
-};
+const mdbases: TestMdbase[] = [];
+afterEach(async () => {
+  for (const mdbase of mdbases.splice(0)) await mdbase.fixture.close();
+});
 
-function fakeMdbase(phase: Record<string, unknown>, signedIn = true) {
-  const snapshot = {
-    status: "ready",
-    collections: signedIn ? [collection] : [],
-    signIn: signedIn
-      ? { state: "paired", accountEmail: "me@example.com" }
-      : null,
-    selection: {
-      state: "usable",
-      lastApproval: null,
-      requested: { collectionId: null, displayName: null },
-    },
-    readiness: {},
-    links: null,
+async function testMdbase(phase: TestAppPreset) {
+  const mdbase = await createTestMdbase({
+    collections: [{ name: "Launch plan" }],
     phase,
-  };
-  return {
-    getSnapshot: () => snapshot,
-    subscribe: () => () => undefined,
-    start: vi.fn(async () => snapshot),
-    close: vi.fn(async () => undefined),
-    signOut: vi.fn(async () => snapshot),
-    chooseAnother: vi.fn(async () => snapshot),
-  };
+  });
+  mdbases.push(mdbase);
+  return mdbase;
 }
 
 it("signs out through the SDK, never by closing the entry", async () => {
-  const mdbase = fakeMdbase({ kind: "choosing", lastApproval: null });
-  render(<SdkApp mdbase={mdbase as unknown as Mdbase} />);
-  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-  await waitFor(() => expect(mdbase.signOut).toHaveBeenCalledOnce());
-  expect(mdbase.close).not.toHaveBeenCalled();
+  const mdbase = await testMdbase("choosing");
+  const actions = () =>
+    mdbase.fixture.controls.observedActions().map((call) => call.action);
+  render(<SdkApp mdbase={mdbase} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+  await waitFor(() => expect(actions()).toContain("signOut"));
+  expect(actions()).not.toContain("close");
 });
 
-it("offers sample tasks before sign-in", async () => {
-  const mdbase = fakeMdbase({ kind: "signed_out", notice: null }, false);
-  render(<SdkApp mdbase={mdbase as unknown as Mdbase} />);
-  fireEvent.click(screen.getByRole("button", { name: "Try sample tasks" }));
+it("offers sample tasks on the sign-in screen only", async () => {
+  const choosing = await testMdbase("choosing");
+  const { unmount } = render(<SdkApp mdbase={choosing} />);
+  await screen.findByRole("button", { name: "Sign out" });
+  expect(screen.queryByRole("button", { name: "Try sample tasks" })).toBeNull();
+  unmount();
+
+  render(<SdkApp mdbase={await testMdbase("signed_out")} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Try sample tasks" }),
+  );
   expect(
     await screen.findByRole("button", { name: "Sample tasks" }),
   ).toBeTruthy();
 });
 
 it("opens the ready collection with the shared switcher in the header", async () => {
-  const mdbase = fakeMdbase({
-    kind: "ready",
-    collectionId: "c1",
-    collection,
-    connection: {
-      id: "c1",
-      displayName: "Launch plan",
-      generation: "c1-1",
-      records: {},
-      isCurrent: () => true,
-    },
-    problem: null,
-  });
-  const { container } = render(<SdkApp mdbase={mdbase as unknown as Mdbase} />);
+  const { container } = render(<SdkApp mdbase={await testMdbase("ready")} />);
   await waitFor(() =>
     expect(
       container.querySelector(
@@ -116,5 +98,4 @@ it("opens the ready collection with the shared switcher in the header", async ()
       ),
     ).toBeTruthy(),
   );
-  expect(mdbase.start).toHaveBeenCalledOnce();
 });

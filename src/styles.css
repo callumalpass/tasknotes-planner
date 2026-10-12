@@ -1804,30 +1804,17 @@ select:focus-visible {
   --mdbase-collections-text-soft: var(--ink-soft);
   --mdbase-collections-border: var(--line-strong);
   --mdbase-collections-danger: var(--danger);
-  --mdbase-collections-radius: 6px;
   --mdbase-collections-font: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mdbase-collections-font-size: 15px;
+  --mdbase-collections-font-size-caption: 13px;
+  --mdbase-collections-font-size-section: 16px;
+  --mdbase-collections-font-size-heading: 30px;
+  --mdbase-collections-font-weight-strong: 700;
+  --mdbase-collections-radius-sm: 6px;
+  --mdbase-collections-radius: 6px;
+  --mdbase-collections-elevation-low: 0 4px 14px rgb(32 36 44 / 0.08);
+  --mdbase-collections-elevation-high: var(--shadow);
   --mdbase-collections-control-height: 44px;
-}
-
-/* The scale the shared UI reads (Planner has no tokens of these names). */
-.mdbase-collections {
-  --font-size-ui: 15px;
-  --font-size-caption: 13px;
-  --font-size-section: 16px;
-  --font-size-heading: 30px;
-  --font-weight-semibold: 700;
-  --radius-sm: 6px;
-  --radius-md: 6px;
-  --radius-lg: 12px;
-  --elevation-low: 0 4px 14px rgb(32 36 44 / 0.08);
-  --elevation-high: var(--shadow);
-  --motion-spin: 800ms;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mdbase-collections {
-    --motion-spin: 0ms;
-  }
 }
 
 /* The header switcher keeps the collection line's small mono type. */
