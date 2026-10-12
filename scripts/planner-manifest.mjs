@@ -1,6 +1,9 @@
 import { parseAppManifest } from "@mdbase-dev/connect-protocol/manifest";
 
-import { loadCanonicalTaskNotesTypePack } from "./canonical-task-pack.mjs";
+import {
+  loadCanonicalBasesTypePack,
+  loadCanonicalTaskNotesTypePack,
+} from "./canonical-task-pack.mjs";
 
 export { TASKNOTES_TYPE_PACK_VERSION } from "./canonical-task-pack.mjs";
 
@@ -20,6 +23,12 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
   );
   if (!taskContract)
     throw new Error("TaskNotes pack provides no task contract.");
+  const basesPack = await loadCanonicalBasesTypePack();
+  const basesContract = basesPack.provides.find(
+    (contract) => contract.id === "obsidian.base",
+  );
+  if (!basesContract)
+    throw new Error("Obsidian Bases pack provides no obsidian.base contract.");
   const manifest = {
     manifest_version: 1,
     id: "dev.tasknotes.planner",
@@ -28,7 +37,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
     icon: `${origin}/tasknotes-mark.svg`,
     redirect_uris: redirectUris,
     requirements: {
-      contracts: [taskContract],
+      contracts: [taskContract, basesContract],
       capabilities: {
         contract_version: 2,
         required: [...requiredCapabilities],
@@ -44,7 +53,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
       ],
     },
     provisions: {
-      type_packs: [typePack],
+      type_packs: [typePack, basesPack],
       configuration: [
         {
           requirement: "tasknotes-planner-base-sources",

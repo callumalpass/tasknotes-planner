@@ -27,7 +27,7 @@ describe("Planner mdbase manifest", () => {
         ],
       },
     });
-    expect(manifest.provisions.type_packs).toHaveLength(1);
+    expect(manifest.provisions.type_packs).toHaveLength(2);
     expect(manifest.provisions.type_packs[0].manifest.version).toBe(
       TASKNOTES_TYPE_PACK_VERSION,
     );
@@ -48,7 +48,16 @@ describe("Planner mdbase manifest", () => {
           }),
         ]),
       },
-      provides: manifest.requirements.contracts,
+      provides: [manifest.requirements.contracts[0]],
+    });
+    // Bases discovery needs obsidian.base installed: required and provisioned.
+    expect(manifest.requirements.contracts.map(({ id }) => id)).toEqual([
+      "tasknotes.task",
+      "obsidian.base",
+    ]);
+    expect(manifest.provisions.type_packs[1]).toMatchObject({
+      manifest: { id: "obsidian.base", version: "1.0.0" },
+      provides: [manifest.requirements.contracts[1]],
     });
     expect(manifest.provisions.configuration).toEqual([
       expect.objectContaining({
