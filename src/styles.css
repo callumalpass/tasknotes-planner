@@ -196,6 +196,24 @@ select:focus-visible {
   margin-top: 35px;
 }
 
+.welcome-notice {
+  max-width: 490px;
+  margin-top: 24px;
+}
+
+.welcome-notice h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+
+.welcome-notice p {
+  margin: 0;
+}
+
+.welcome-notice .welcome-actions {
+  margin-top: 16px;
+}
+
 .primary-action,
 .save-action {
   min-height: 44px;

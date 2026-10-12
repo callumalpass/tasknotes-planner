@@ -128,6 +128,10 @@ function fixture(
     close: vi.fn<MdbaseApplication["close"]>(async () => {
       publish({ status: "closed" });
     }),
+    signOut: vi.fn<NonNullable<MdbaseApplication["signOut"]>>(async () => {
+      publish({ status: "signed_out", signIn: null, collections: [] });
+      return snapshot;
+    }),
   };
   const sdk: PlannerSdk = {
     application: () => application,
@@ -601,13 +605,13 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(h.application.select).not.toHaveBeenCalled();
   });
 
-  it("cannot publish signout before successful physical close", async () => {
+  it("Sign out uses the SDK sign-out, not close, and reports only after it completes", async () => {
     const h = fixture({ status: "unselected", signIn: paired });
     let finish!: () => void;
-    vi.mocked(h.application.close).mockImplementation(
+    vi.mocked(h.application.signOut!).mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+        new Promise((resolve) => {
+          finish = () => resolve(h.application.getSnapshot());
         }),
     );
     const signedOut = vi.fn();
@@ -622,11 +626,53 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(signedOut).not.toHaveBeenCalled();
     await act(async () => finish());
     expect(signedOut).toHaveBeenCalledOnce();
+    expect(h.application.signOut).toHaveBeenCalledWith(
+      expect.objectContaining({ discard: false }),
+    );
+    expect(h.application.close).not.toHaveBeenCalled();
   });
 
-  it("a rejected close retains original paired presentation and hides private rejection details", async () => {
+  it("unsaved changes refuse sign-out until the person chooses to discard them", async () => {
     const h = fixture({ status: "unselected", signIn: paired });
-    vi.mocked(h.application.close).mockRejectedValue(
+    vi.mocked(h.application.signOut!).mockImplementation(async (options) => {
+      if (!options?.discard)
+        throw mdbaseError("conflict", "pending", "sign_out_pending_writes");
+      h.publish({ status: "signed_out", signIn: null });
+      return h.application.getSnapshot();
+    });
+    const signedOut = vi.fn();
+    render(
+      <SdkConnectionGate
+        sdk={h.sdk}
+        onDemo={vi.fn()}
+        onSignedOut={signedOut}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(
+      await screen.findByText(
+        describeError("sign_out_pending_writes")!.message,
+      ),
+    ).toBeTruthy();
+    expect(signedOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Wait" }));
+    expect(
+      screen.queryByRole("button", { name: "Sign out anyway" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sign out anyway" }),
+    );
+    await waitFor(() => expect(signedOut).toHaveBeenCalledOnce());
+    expect(h.application.signOut).toHaveBeenLastCalledWith(
+      expect.objectContaining({ discard: true }),
+    );
+    expect(h.application.close).not.toHaveBeenCalled();
+  });
+
+  it("a rejected sign-out keeps the paired presentation and shows SDK copy, not private details", async () => {
+    const h = fixture({ status: "unselected", signIn: paired });
+    vi.mocked(h.application.signOut!).mockRejectedValue(
       new Error("private-custody-diagnostic"),
     );
     const signedOut = vi.fn();
@@ -639,21 +685,21 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     );
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "could not open this collection",
+      describeError("sign_out_failed")!.title,
     );
     expect(signedOut).not.toHaveBeenCalled();
     expect(screen.getByText("Signed in as planner@example.test")).toBeTruthy();
     expect(screen.queryByText("private-custody-diagnostic")).toBeNull();
   });
 
-  it("fences a late original close when the UI owner is replaced", async () => {
+  it("fences a late original sign-out when the UI owner is replaced", async () => {
     const original = fixture({ status: "unselected", signIn: paired });
     const replacement = fixture();
     let finish!: () => void;
-    vi.mocked(original.application.close).mockImplementation(
+    vi.mocked(original.application.signOut!).mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+        new Promise((resolve) => {
+          finish = () => resolve(original.application.getSnapshot());
         }),
     );
     const signedOut = vi.fn();

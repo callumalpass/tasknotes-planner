@@ -56,6 +56,10 @@ function SdkApplicationView({
   const [interrupted, setInterrupted] = useState(false);
   // Setup always goes through one review; nothing is written before Confirm.
   const [reviewing, setReviewing] = useState(false);
+  const [signOutNotice, setSignOutNotice] = useState<{
+    description: MdbaseErrorDescription;
+    pendingWrites: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const scope = new AbortController();
@@ -114,6 +118,30 @@ function SdkApplicationView({
       if (!scope.signal.aborted) setWorking(busy.current > 0);
     }
   };
+
+  // Real sign-out: ends the mdbase session and erases this device's sign-in,
+  // so a reload stays signed out. Unsaved changes refuse unless discarded.
+  const canSignOut = typeof application.signOut === "function";
+  const signOut = (discard: boolean) =>
+    act(async ({ signal }) => {
+      try {
+        await application.signOut?.({ signal, discard });
+      } catch (cause) {
+        signal.throwIfAborted();
+        const description =
+          describeError(cause) ?? describeError("sign_out_failed");
+        if (!description) throw cause;
+        setSignOutNotice({
+          description,
+          pendingWrites:
+            !discard && description.key === "sign_out_pending_writes",
+        });
+        return;
+      }
+      signal.throwIfAborted();
+      setSignOutNotice(null);
+      onSignedOut?.();
+    });
 
   const selected = snapshot.collections.find(
     (collection) => collection.collectionId === snapshot.selectedCollectionId,
@@ -280,6 +308,34 @@ function SdkApplicationView({
         <p role={error ? "alert" : "status"} aria-live="polite">
           {message}
         </p>
+        {signOutNotice ? (
+          <div className="welcome-notice" role="alert">
+            <h2>{signOutNotice.description.title}</h2>
+            <p>{signOutNotice.description.message}</p>
+            <div className="welcome-actions">
+              {signOutNotice.pendingWrites ? (
+                <button
+                  className="primary-action"
+                  type="button"
+                  disabled={working}
+                  onClick={() => void signOut(true)}
+                >
+                  Sign out anyway
+                </button>
+              ) : null}
+              <button
+                className="text-action"
+                type="button"
+                disabled={working}
+                onClick={() => setSignOutNotice(null)}
+              >
+                {signOutNotice.pendingWrites
+                  ? (signOutNotice.description.actionLabel ?? "Wait")
+                  : "Dismiss"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="welcome-actions">
           {!closed &&
           !unavailable &&
@@ -355,18 +411,12 @@ function SdkApplicationView({
               {describeError("setup_required")?.actionLabel}
             </button>
           ) : null}
-          {paired ? (
+          {paired && canSignOut && !signOutNotice ? (
             <button
               className="text-action"
               type="button"
               disabled={working}
-              onClick={() =>
-                void act(async ({ signal }) => {
-                  await application.close();
-                  signal.throwIfAborted();
-                  onSignedOut?.();
-                })
-              }
+              onClick={() => void signOut(false)}
             >
               Sign out
             </button>
