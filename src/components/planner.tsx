@@ -40,6 +40,7 @@ import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
 import type {
   PlannerCollection,
   PendingPlannerMutation,
+  RejectedPlannerWrite,
   PlannerRepository,
   PlannerTask,
   ScheduleUpdate,
@@ -81,6 +82,9 @@ export function Planner({
   const [pendingMutations, setPendingMutations] = useState<
     readonly PendingPlannerMutation[]
   >([]);
+  const [rejectedWrites, setRejectedWrites] = useState<
+    readonly RejectedPlannerWrite[]
+  >([]);
   const [recoveringMutation, setRecoveringMutation] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const [collectionActionError, setCollectionActionError] = useState("");
@@ -90,6 +94,7 @@ export function Planner({
 
   const refreshPendingMutations = useCallback(() => {
     setPendingMutations(repository.pendingMutations?.() ?? []);
+    setRejectedWrites(repository.rejectedWrites?.() ?? []);
   }, [repository]);
 
   const load = useCallback(
@@ -513,6 +518,21 @@ export function Planner({
             {recoveringMutation === pending.requestId
               ? "Recovering…"
               : "Recover pending change"}
+          </button>
+        </aside>
+      ))}
+      {rejectedWrites.map((write) => (
+        <aside className="planner-error" key={write.id} role="alert">
+          A change wasn’t saved: {write.message}
+          <button
+            type="button"
+            onClick={() =>
+              void repository
+                .dismissRejectedWrite?.(write.id)
+                .finally(refreshPendingMutations)
+            }
+          >
+            Dismiss
           </button>
         </aside>
       ))}

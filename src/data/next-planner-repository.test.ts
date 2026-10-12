@@ -1,6 +1,5 @@
 import {
   connect,
-  MdbaseError,
   toValue,
   type MdbaseClient,
   type wire,
@@ -194,11 +193,10 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     await expect(f.repo.load()).rejects.toThrow("same portable identity");
   });
 
-  it("writes canonical schedule fields through the task contract and waits for confirmation/readback", async () => {
+  it("writes canonical schedule fields through the task contract", async () => {
     const f = await fixture();
     const [item] = (await f.repo.load()).tasks;
     const update = vi.spyOn(f.client, "update");
-    const get = vi.spyOn(f.client, "get");
     const saved = await f.repo.updateSchedule(item, {
       scheduled: "2026-10-10",
       due: "2026-10-12",
@@ -215,20 +213,45 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
         patch: { scheduled: "2026-10-10", due: "2026-10-12" },
         ifRevision: expect.any(String),
       }),
-      expect.objectContaining({
-        mutationId: expect.any(String),
-        signal: expect.any(AbortSignal),
-      }),
-    );
-    expect(get).toHaveBeenLastCalledWith(
-      f.record.id,
-      { effective: true },
-      expect.any(AbortSignal),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     const stored = await f.client.get(f.record.id, { effective: true });
     expect(stored.frontmatter.get("starts")).toBe("2026-10-10");
     expect(stored.frontmatter.get("ends")).toBe("2026-10-12");
-    expect(f.repo.pendingMutations()).toEqual([]);
+  });
+
+  it("keeps editing while writes are saved on this device, and lists a later refusal", async () => {
+    const f = await fixture({ pending: true });
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementation((write, options) =>
+      save(write, { ...options, timeoutMs: 10 }),
+    );
+    const [item] = (await f.repo.load()).tasks;
+    const changed = vi.fn();
+    await f.repo.watch(changed);
+    const first = await f.repo.updateSchedule(item, { due: "2026-10-12" });
+    expect(first.due).toBe("2026-10-12");
+    const [reloaded] = (await f.repo.load()).tasks;
+    const second = await f.repo.updateSchedule(reloaded, { due: "2026-10-13" });
+    expect(second.due).toBe("2026-10-13");
+    expect(f.client.ledger.getSnapshot().pending).toHaveLength(2);
+    expect(f.repo.rejectedWrites()).toEqual([]);
+
+    const [refused] = f.client.ledger.getSnapshot().pending;
+    changed.mockClear();
+    f.replica.reject(refused.mutationId, {
+      code: "conflict",
+      recovery: "refresh",
+      message: "Changed elsewhere",
+    });
+    await vi.waitFor(() =>
+      expect(f.repo.rejectedWrites()).toEqual([
+        { id: refused.mutationId, message: "Changed elsewhere" },
+      ]),
+    );
+    expect(changed).toHaveBeenCalled();
+    await f.repo.dismissRejectedWrite(refused.mutationId);
+    expect(f.repo.rejectedWrites()).toEqual([]);
   });
 
   it("preserves portable completion behavior and customized fields", async () => {
@@ -251,162 +274,6 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
       f.repo.updateProperties(item, { status: "unknown" }),
     ).rejects.toThrow("not available");
     expect(update).not.toHaveBeenCalled();
-  });
-
-  it("retains an unknown mutation for receipt-only recovery, never a new update", async () => {
-    const f = await fixture();
-    const [item] = (await f.repo.load()).tasks;
-    const update = vi.spyOn(f.client, "update").mockRejectedValue(
-      new MdbaseError({
-        code: "outcome_unknown",
-        recovery: "resolve_outcome",
-        message: "Unknown write",
-      }),
-    );
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toMatchObject({ code: "outcome_unknown" });
-    const [pending] = f.repo.pendingMutations();
-    expect(pending.operation).toBe("update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-13" }),
-    ).rejects.toThrow("pending write");
-    const receipt = vi.spyOn(f.client, "awaitReceipt").mockResolvedValue({
-      mutation: pending.requestId,
-      state: "confirmed",
-      status: "applied",
-    });
-    await f.repo.recoverPendingMutation(pending.requestId);
-    expect(receipt).toHaveBeenCalledWith(
-      pending.requestId,
-      30000,
-      expect.any(AbortSignal),
-    );
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(f.repo.pendingMutations()).toEqual([]);
-  });
-
-  it("does not report pending receipts as saved or resubmit during recovery", async () => {
-    const f = await fixture({ pending: true });
-    const [item] = (await f.repo.load()).tasks;
-    const original = f.client.update.bind(f.client);
-    let mutation = "";
-    const update = vi
-      .spyOn(f.client, "update")
-      .mockImplementation(async (...args) => {
-        const write = await original(...args);
-        mutation = write.mutationId;
-        return write;
-      });
-    const receipt = vi
-      .spyOn(f.client, "awaitReceipt")
-      .mockImplementation(async (id) => ({ mutation: id, state: "pending" }));
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("not confirmed");
-    await expect(f.repo.recoverPendingMutation(mutation)).rejects.toThrow(
-      "not confirmed",
-    );
-    expect(update).toHaveBeenCalledTimes(1);
-    receipt.mockRestore();
-    f.replica.confirmAll();
-    await f.repo.recoverPendingMutation(mutation);
-    expect(f.repo.pendingMutations()).toEqual([]);
-  });
-
-  it("retains an actual captured mutation after an ambiguous internal SDK response error", async () => {
-    const f = await fixture({ pending: true });
-    const [item] = (await f.repo.load()).tasks;
-    const original = f.client.update.bind(f.client);
-    let captured = "";
-    const update = vi
-      .spyOn(f.client, "update")
-      .mockImplementation(async (record, changes, options) => {
-        const write = await original(record, changes, options);
-        captured = write.mutationId;
-        throw new MdbaseError({
-          code: "internal",
-          recovery: "contact_support",
-          reason: "invalid_submit_result",
-          message: "Post-capture response error",
-        });
-      });
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toMatchObject({ code: "internal" });
-    expect(
-      (await f.client.pendingWrites()).some(
-        (pending) => pending.receipt.mutation === captured,
-      ),
-    ).toBe(true);
-    expect(f.repo.pendingMutations()).toEqual([
-      expect.objectContaining({ requestId: captured }),
-    ]);
-    f.replica.confirmAll();
-    await f.repo.recoverPendingMutation(captured);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(f.repo.pendingMutations()).toEqual([]);
-  });
-
-  it("retains the original write when confirmed receipt readback has another genuine pending edit", async () => {
-    const f = await fixture({ pending: true });
-    const [item] = (await f.repo.load()).tasks;
-    const originalReceipt = f.client.awaitReceipt.bind(f.client);
-    const receipt = vi
-      .spyOn(f.client, "awaitReceipt")
-      .mockImplementation(async (mutation, timeout, signal) => {
-        f.replica.confirmAll();
-        const confirmed = await originalReceipt(mutation, timeout, signal);
-        expect(confirmed.state).toBe("confirmed");
-        const current = await f.client.get(f.record.id, { effective: true });
-        await f.client.update(current, {
-          patch: { headline: "Other pending edit" },
-          ifRevision: current.revision,
-        });
-        expect((await f.client.get(f.record.id)).state.state).toBe("pending");
-        return confirmed;
-      });
-    const update = vi.spyOn(f.client, "update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("current task is pending or protected");
-    const [pending] = f.repo.pendingMutations();
-    expect(pending).toBeDefined();
-    receipt.mockRestore();
-    f.replica.confirmAll();
-    await f.repo.recoverPendingMutation(pending.requestId);
-    expect(update).toHaveBeenCalledTimes(2); // own write + independent consumer
-    expect(f.repo.pendingMutations()).toEqual([]);
-  });
-
-  it("retains a confirmed task write when readback fails and recovers without another update", async () => {
-    const f = await fixture({ pending: true });
-    const [item] = (await f.repo.load()).tasks;
-    const originalReceipt = f.client.awaitReceipt.bind(f.client);
-    const receipt = vi
-      .spyOn(f.client, "awaitReceipt")
-      .mockImplementation(async (mutation, timeout, signal) => {
-        f.replica.confirmAll();
-        const confirmed = await originalReceipt(mutation, timeout, signal);
-        vi.spyOn(f.client, "get").mockRejectedValueOnce(
-          new MdbaseError({
-            code: "unavailable",
-            recovery: "retry",
-            message: "Readback unavailable",
-          }),
-        );
-        return confirmed;
-      });
-    const update = vi.spyOn(f.client, "update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("Readback unavailable");
-    const [pending] = f.repo.pendingMutations();
-    expect(pending).toBeDefined();
-    receipt.mockRestore();
-    await f.repo.recoverPendingMutation(pending.requestId);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(f.repo.pendingMutations()).toEqual([]);
   });
 
   it("surfaces a rejected or conflicted receipt rather than optimistic success", async () => {
@@ -455,61 +322,6 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     expect(f.views.list).not.toHaveBeenCalled();
   });
 
-  it("forwards source pending identities and recovery without using task receipt recovery", async () => {
-    const f = await fixture();
-    await f.repo.load();
-    const requestId = crypto.randomUUID();
-    let active = true;
-    f.views.pendingMutations = () =>
-      active
-        ? [
-            {
-              requestId,
-              operation: "view-update",
-              createdAt: new Date().toISOString(),
-            },
-          ]
-        : [];
-    f.views.recoverPendingMutation = vi.fn(async () => {
-      active = false;
-    });
-    const receipt = vi.spyOn(f.client, "awaitReceipt");
-    expect(f.repo.pendingMutations()).toEqual([
-      expect.objectContaining({ requestId }),
-    ]);
-    await f.repo.recoverPendingMutation(requestId);
-    expect(f.views.recoverPendingMutation).toHaveBeenCalledWith(
-      requestId,
-      expect.any(AbortSignal),
-    );
-    expect(receipt).not.toHaveBeenCalled();
-    expect(f.repo.pendingMutations()).toEqual([]);
-  });
-
-  it("blocks task capture during view preflight and releases the boundary after refusal", async () => {
-    const f = await fixture();
-    const [item] = (await f.repo.load()).tasks;
-    let reject!: (error: Error) => void;
-    f.views.save = vi.fn(
-      () =>
-        new Promise<PlannerView>((_resolve, failed) => {
-          reject = failed;
-        }),
-    );
-    const save = f.repo.saveView({ name: "Work" });
-    const failed = expect(save).rejects.toThrow("Source refusal");
-    const update = vi.spyOn(f.client, "update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("pending write");
-    expect(update).not.toHaveBeenCalled();
-    reject(new Error("Source refusal"));
-    await failed;
-    expect((await f.repo.updateSchedule(item, { due: "2026-10-12" })).due).toBe(
-      "2026-10-12",
-    );
-  });
-
   it("executes the chosen saved view rather than silently falling back to all tasks", async () => {
     const f = await fixture();
     const view: PlannerView = {
@@ -532,63 +344,5 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     expect(query).not.toHaveBeenCalled();
     expect(f.views.execute).toHaveBeenCalledWith(view, expect.any(AbortSignal));
     await expect(f.repo.load("missing")).rejects.toThrow("no longer available");
-  });
-
-  it("retains the original admitted provider witness during live recovery", async () => {
-    const f = await fixture();
-    const catalog = await f.client.describe();
-    const originalType = catalog.types[0];
-    vi.mocked(f.client.describe).mockResolvedValue({
-      ...catalog,
-      types: [...catalog.types, { ...originalType, name: "alternate-task" }],
-    });
-    const [item] = (await f.repo.load()).tasks;
-    const original = f.client.get.bind(f.client);
-    vi.spyOn(f.client, "get").mockImplementation(async (...args) => {
-      const current = await original(...args);
-      return args[0] === f.record.id
-        ? { ...current, types: ["alternate-task"] }
-        : current;
-    });
-    const update = vi.spyOn(f.client, "update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("portable identity");
-    const [pending] = f.repo.pendingMutations();
-    await expect(
-      f.repo.recoverPendingMutation(pending.requestId),
-    ).rejects.toThrow("portable identity");
-    expect(f.repo.pendingMutations()).toEqual([pending]);
-    expect(update).toHaveBeenCalledTimes(1);
-  });
-
-  // Clients' independent regression: readback is mocked, not native proof.
-  it("uses the original portable identity witness during live task recovery too", async () => {
-    const f = await fixture();
-    const [item] = (await f.repo.load()).tasks;
-    const original = f.client.get.bind(f.client);
-    vi.spyOn(f.client, "get").mockImplementation(async (...args) => {
-      const current = await original(...args);
-      if (args[0] !== f.record.id) return current;
-      return {
-        ...current,
-        frontmatter: new Map(current.frontmatter).set("id", "replacement"),
-        effective: new Map(current.effective ?? current.frontmatter).set(
-          "id",
-          "replacement",
-        ),
-      };
-    });
-    const update = vi.spyOn(f.client, "update");
-    await expect(
-      f.repo.updateSchedule(item, { due: "2026-10-12" }),
-    ).rejects.toThrow("saved task changed its portable identity");
-    const [pending] = f.repo.pendingMutations();
-    expect(pending).toBeDefined();
-    await expect(
-      f.repo.recoverPendingMutation(pending.requestId),
-    ).rejects.toThrow();
-    expect(f.repo.pendingMutations()).toEqual([pending]);
-    expect(update).toHaveBeenCalledTimes(1);
   });
 });

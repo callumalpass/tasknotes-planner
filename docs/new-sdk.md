@@ -17,16 +17,15 @@ Do not use it as evidence of launch readiness or a deployed app.
   plan. Nested field-reference bindings are explicitly unsupported until the
   shared SDK provides nested updates.
 - Reads the current task before editing, checks its portable identity and type,
-  applies explicit CAS, waits for a receipt, and reads the confirmed record back.
-  Portable completion and dependency behavior still comes from `@tasknotes/model`.
-- Unconfirmed/unknown outcomes and ambiguous internal SDK response errors remain
-  visible through the existing pending mutation port. Task writes retain their
-  original native target until confirmed, unprotected current readback succeeds;
-  a receipt alone cannot publish another consumer's pending edit as saved.
-  Live recovery applies the original portable identity/provider witness as well
-  as the native UUID/state checks. Restored intents do not invent lost witnesses.
-  Recovery looks up the **same mutation**, never resubmits a new edit.
-  Protected/conflicted tasks must be resolved in TaskNotes.
+  applies explicit CAS, and settles the write with `client.save()`: confirmed,
+  or saved on this device while offline or the service is busy. Portable
+  completion and dependency behavior still comes from `@tasknotes/model`.
+- Unconfirmed writes belong to the SDK's write ledger, which persists them,
+  restores them on reload and settles them from receipts. Planner keeps no
+  pending-write list of its own and does not block edits behind one. A write
+  the log refuses later appears as a dismissible notice (`client.ledger`
+  rejected entries, acknowledged on dismiss). Protected/conflicted tasks must
+  be resolved in TaskNotes.
 - The change subscription is established before loading a snapshot. Repository
   disposal aborts outstanding work and closes the watch, not the session-owned
   SDK client.
@@ -57,12 +56,10 @@ Serialization can
 change YAML formatting. New sources use a separate captured record UUID under
 `TaskNotes/Views/`, not a name-based overwrite.
 
-Original native mutation IDs remain visible for receipt/readback-only recovery.
-Saved results require actual confirmation, unprotected current full-source
-readback, and native discovery of the same UUID/source revision/original ordinal.
-Restored source intents qualify their actual complete source without inventing
-lost ordinal metadata. View and task writes share the repository's pending-write
-boundary; no separate autosave/session engine is introduced.
+View writes settle through `client.save()` too. A saved result requires an
+unprotected current full-source readback and native discovery of the same
+UUID/source revision/original ordinal. No separate autosave/session engine is
+introduced.
 
 Shared web sign-in and manifest-driven setup must be integrated from the SDK;
 Planner does not implement private auth/route/grant protocols or a second setup

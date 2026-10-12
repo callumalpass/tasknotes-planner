@@ -9,11 +9,7 @@ import {
   parseDocument,
   visit,
 } from "yaml";
-import type {
-  PendingPlannerMutation,
-  PlannerView,
-  SavePlannerViewInput,
-} from "../domain/task";
+import type { PlannerView, SavePlannerViewInput } from "../domain/task";
 
 export interface NextPlannerViewAccess {
   list(signal: AbortSignal): Promise<PlannerView[]>;
@@ -23,27 +19,12 @@ export interface NextPlannerViewAccess {
     document: string,
     signal: AbortSignal,
   ): Promise<PlannerView>;
-  pendingMutations?(): readonly PendingPlannerMutation[];
-  recoverPendingMutation?(
-    requestId: string,
-    signal: AbortSignal,
-  ): Promise<void>;
-  restorePending?(
-    mutations: Awaited<ReturnType<MdbaseClient["pendingWrites"]>>,
-  ): void;
-}
-
-interface SourceMutation extends PendingPlannerMutation {
-  recordId: string;
-  ordinal?: number;
-  name?: string;
 }
 
 /** Native view identity is UUID + source SHA + original declaration ordinal.
  * Names and paths are presentation only, never execution selectors. */
 export class NextPlannerViews implements NextPlannerViewAccess {
   private descriptors = new Map<string, AppBasesDescriptor>();
-  private readonly pending = new Map<string, SourceMutation>();
 
   constructor(private readonly client: MdbaseClient) {}
 
@@ -224,10 +205,6 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       this.client,
       input.view ? "records.edit" : "records.create",
     );
-    if (this.pending.size)
-      throw new Error(
-        "Recover the pending view write before saving another view.",
-      );
     const name = input.name;
     const definition = object(parse(document));
     if (!Array.isArray(definition.views) || definition.views.length !== 1)
@@ -276,156 +253,55 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       recordId = crypto.randomUUID();
     }
     signal.throwIfAborted();
-    if (this.pending.size)
-      throw new Error(
-        "Recover the pending view write before saving another view.",
-      );
     assertSourceGrant(this.client, base ? "records.edit" : "records.create");
-    const mutationId = crypto.randomUUID();
-    const mutation: SourceMutation = {
-      requestId: mutationId,
-      operation: base ? "view-update" : "view-create",
-      createdAt: new Date().toISOString(),
-      recordId,
-      ordinal,
-      name,
-    };
-    this.pending.set(mutationId, mutation);
-    // Keep both original identities on every ambiguous SDK failure. The shared
-    // helper supplies actual source CAS; no private RPC or read-and-overwrite.
-    const write = base
-      ? await this.client.views.updateSource(base, document, {
-          mutationId,
-          signal,
-        })
-      : await this.client.views.createSource(
-          { id: recordId, path: `TaskNotes/Views/${recordId}.base`, document },
-          { mutationId, signal },
-        );
-    signal.throwIfAborted();
-    if (write.mutationId !== mutationId)
-      throw new Error("The view write changed its mutation identity.");
-    const record = await this.confirm(mutation, signal);
-    const saved = await this.savedView(mutation, record, signal);
-    this.pending.delete(mutationId);
-    return saved;
-  }
-
-  pendingMutations(): readonly PendingPlannerMutation[] {
-    return [...this.pending.values()].map(
-      ({ requestId, operation, createdAt }) => ({
-        requestId,
-        operation,
-        createdAt,
-      }),
+    // The shared helper supplies actual source CAS; no read-and-overwrite. An
+    // unconfirmed write is saved on this device and the SDK's ledger settles it.
+    const options = { mutationId: crypto.randomUUID(), signal };
+    const result = await this.client.save(
+      base
+        ? this.client.views.updateSource(base, document, options)
+        : this.client.views.createSource(
+            {
+              id: recordId,
+              path: `TaskNotes/Views/${recordId}.base`,
+              document,
+            },
+            options,
+          ),
+      { signal },
     );
-  }
-
-  restorePending(
-    mutations: Awaited<ReturnType<MdbaseClient["pendingWrites"]>>,
-  ): void {
-    for (const mutation of mutations) {
-      if (
-        mutation.ops.length !== 1 ||
-        this.pending.has(mutation.receipt.mutation)
-      )
-        continue;
-      const op = mutation.ops[0];
-      if (op.kind !== "create" && op.kind !== "document") continue;
-      const document =
-        op.kind === "create"
-          ? op.document
-          : op.kind === "document"
-            ? op.new?.doc
-            : undefined;
-      const path =
-        op.kind === "create"
-          ? op.path
-          : op.kind === "document"
-            ? op.new?.path
-            : undefined;
-      if (
-        !path?.toLowerCase().endsWith(".base") ||
-        !document ||
-        !plannerSource(document)
-      )
-        continue;
-      this.pending.set(mutation.receipt.mutation, {
-        requestId: mutation.receipt.mutation,
-        operation: op.kind === "create" ? "view-create" : "view-update",
-        createdAt: new Date(mutation.captured).toISOString(),
-        recordId: op.id,
-      });
+    if (result.outcome === "rejected") {
+      await this.client.ledger.acknowledge(result.mutationId);
+      throw result.problem
+        ? new MdbaseError(result.problem)
+        : new Error("The view change was rejected.");
     }
-  }
-
-  async recoverPendingMutation(
-    requestId: string,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const mutation = this.pending.get(requestId);
-    if (!mutation)
-      throw new Error("The exact pending view write is unavailable.");
-    const record = await this.confirm(mutation, signal);
-    // A live intent retains its selected ordinal/name. Restored native intents
-    // can qualify the full source without inventing a lost selected ordinal.
-    if (mutation.ordinal !== undefined)
-      await this.savedView(mutation, record, signal);
-    signal.throwIfAborted();
-    this.pending.delete(requestId);
-  }
-
-  private async confirm(
-    mutation: SourceMutation,
-    signal: AbortSignal,
-  ): Promise<wire.RecordView> {
-    const receipt = await this.client.awaitReceipt(
-      mutation.requestId,
-      30_000,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (receipt.mutation !== mutation.requestId)
-      throw new Error("The view receipt changed its mutation identity.");
-    if (receipt.state === "pending" || receipt.state === "unknown")
-      throw new Error(
-        "The view write is not confirmed. Recover its original operation before saving again.",
-      );
-    if (receipt.state === "rejected" || receipt.status === "conflicted") {
-      this.pending.delete(mutation.requestId);
-      throw receipt.problem
-        ? new MdbaseError(receipt.problem)
-        : new Error(
-            "Resolve the rejected or conflicted view change before saving again.",
-          );
-    }
-    const record = await this.client.views.getSourceRecord(mutation.recordId, {
+    const record = await this.client.views.getSourceRecord(recordId, {
       signal,
     });
     signal.throwIfAborted();
-    if (record.id !== mutation.recordId)
+    if (record.id !== recordId)
       throw new Error("The saved view changed its record identity.");
     assertWritable(record);
-    return record;
+    return this.savedView(record, ordinal, name, signal);
   }
 
   private async savedView(
-    mutation: SourceMutation,
     record: wire.RecordView,
+    ordinal: number,
+    name: string,
     signal: AbortSignal,
   ): Promise<PlannerView> {
     const views = await this.list(signal);
-    const saved = views.find(
-      (view) => view.key === `${record.id}#${mutation.ordinal}`,
-    );
+    const saved = views.find((view) => view.key === `${record.id}#${ordinal}`);
     if (
       !saved ||
       saved.path !== record.path ||
       saved.revision !== record.revision ||
-      saved.name !== mutation.name
+      saved.name !== name
     )
       throw new Error(
-        "The confirmed view changed its selected declaration. Keep the original operation for recovery.",
+        "The saved view changed its selected declaration. Refresh Planner.",
       );
     return saved;
   }
@@ -472,18 +348,17 @@ function assertSourceGrant(
     );
 }
 
+/** Unconfirmed local writes are the SDK's to settle; protected edits are not. */
 function writableState(record: wire.RecordView): boolean {
   return (
-    record.state.state === "confirmed" &&
-    record.state.hold === undefined &&
-    (record.state.unresolved ?? 0) === 0
+    record.state.hold === undefined && (record.state.unresolved ?? 0) === 0
   );
 }
 
 function assertWritable(record: wire.RecordView): void {
   if (!writableState(record))
     throw new Error(
-      "The view source is pending or protected. Keep its original operation for recovery.",
+      "The view source has a protected edit. Resolve it in TaskNotes before saving.",
     );
 }
 
@@ -545,24 +420,6 @@ function replaceSelected(
     }
   } else selected.set("options", document.createNode(options));
   return document.toString();
-}
-
-function plannerSource(source: string): boolean {
-  try {
-    const value = object(parse(source));
-    return (
-      Array.isArray(value.views) &&
-      value.views.some(
-        (view) =>
-          view !== null &&
-          typeof view === "object" &&
-          !Array.isArray(view) &&
-          plannerType((view as Record<string, unknown>).type),
-      )
-    );
-  } catch {
-    return false;
-  }
 }
 
 function selection(view: AppBasesDescriptor) {

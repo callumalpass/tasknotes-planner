@@ -95,6 +95,12 @@ export interface PendingPlannerMutation {
   createdAt: string;
 }
 
+/** A write the collection refused after it was saved on this device. */
+export interface RejectedPlannerWrite {
+  id: string;
+  message: string;
+}
+
 export interface PlannerRepository {
   load(viewKey?: string): Promise<PlannerCollection>;
   updateSchedule(
@@ -113,5 +119,7 @@ export interface PlannerRepository {
   saveView(input: SavePlannerViewInput): Promise<PlannerView>;
   pendingMutations?(): readonly PendingPlannerMutation[];
   recoverPendingMutation?(requestId: string): Promise<void>;
+  rejectedWrites?(): readonly RejectedPlannerWrite[];
+  dismissRejectedWrite?(id: string): Promise<void>;
   watch?(listener: () => void): Promise<() => void>;
 }

@@ -24,7 +24,7 @@ import type {
   PlannerRepository,
   PlannerTask,
   PlannerView,
-  PendingPlannerMutation,
+  RejectedPlannerWrite,
   ScheduleUpdate,
   TaskDependency,
   TaskPropertyUpdate,
@@ -49,19 +49,9 @@ import {
 export class NextPlannerRepository implements PlannerRepository {
   private readonly scope = new AbortController();
   private configurations = new Map<string, TaskTypeConfiguration>();
-  private readonly pending = new Map<
-    string,
-    PendingPlannerMutation & {
-      recordId?: string;
-      identity?: {
-        id: string;
-        providerType: string;
-        configurations: ReadonlyMap<string, TaskTypeConfiguration>;
-      };
-    }
-  >();
   private readonly listeners = new Set<() => void>();
   private changesWatch: ReturnType<MdbaseClient["watchChanges"]> | undefined;
+  private stopLedger: (() => void) | undefined;
   private generation = 0;
   private configurationGeneration = -1;
   private savingView = false;
@@ -146,8 +136,6 @@ export class NextPlannerRepository implements PlannerRepository {
           );
         records.push(...page.records);
       }
-    const mutations = await this.client.pendingWrites(signal);
-    signal.throwIfAborted();
     if (generation !== this.generation) throw changed();
     const tasks = records
       .filter((record) => record.types.some((type) => configurations.has(type)))
@@ -159,23 +147,6 @@ export class NextPlannerRepository implements PlannerRepository {
           "Two task records have the same portable identity. Resolve the duplicate before planning.",
         );
       identities.add(item.id);
-    }
-    this.views.restorePending?.(mutations);
-    const viewMutations = new Set(
-      (this.views.pendingMutations?.() ?? []).map(
-        (mutation) => mutation.requestId,
-      ),
-    );
-    for (const mutation of mutations) {
-      if (viewMutations.has(mutation.receipt.mutation)) continue;
-      const op = mutation.ops.length === 1 ? mutation.ops[0] : undefined;
-      this.pending.set(mutation.receipt.mutation, {
-        ...this.pending.get(mutation.receipt.mutation),
-        requestId: mutation.receipt.mutation,
-        operation: mutation.ops.map((op) => op.kind).join(", "),
-        createdAt: new Date(mutation.captured).toISOString(),
-        ...(op?.kind === "update" ? { recordId: op.id } : {}),
-      });
     }
     this.configurations = configurations;
     this.configurationGeneration = generation;
@@ -264,8 +235,8 @@ export class NextPlannerRepository implements PlannerRepository {
   async saveView(input: SavePlannerViewInput): Promise<PlannerView> {
     const name = input.name.trim();
     if (!name) throw new Error("Give this view a name before saving it.");
-    if (this.savingView || this.pendingMutations().length)
-      throw new Error("Check the pending write before saving a view.");
+    if (this.savingView)
+      throw new Error("Wait for the view save before saving another view.");
     if (this.configurationGeneration !== this.generation) throw changed();
     this.savingView = true;
     try {
@@ -282,38 +253,16 @@ export class NextPlannerRepository implements PlannerRepository {
     }
   }
 
-  pendingMutations(): readonly PendingPlannerMutation[] {
-    return [
-      ...[...this.pending.values()].map(
-        ({ requestId, operation, createdAt }) => ({
-          requestId,
-          operation,
-          createdAt,
-        }),
-      ),
-      ...(this.views.pendingMutations?.() ?? []),
-    ];
+  /** Writes the collection refused after they were saved on this device. */
+  rejectedWrites(): readonly RejectedPlannerWrite[] {
+    return this.client.ledger.getSnapshot().rejected.map((entry) => ({
+      id: entry.mutationId,
+      message: entry.problem?.message ?? "The collection refused the change.",
+    }));
   }
 
-  async recoverPendingMutation(requestId: string): Promise<void> {
-    const signal = this.signal();
-    if (
-      this.views
-        .pendingMutations?.()
-        .some((mutation) => mutation.requestId === requestId)
-    ) {
-      if (!this.views.recoverPendingMutation)
-        throw new Error("View recovery is unavailable.");
-      await this.views.recoverPendingMutation(requestId, signal);
-      signal.throwIfAborted();
-      this.pending.delete(requestId);
-      this.emit();
-      return;
-    }
-    if (!this.pending.has(requestId)) return;
-    await this.confirm(requestId, signal);
-    signal.throwIfAborted();
-    this.pending.delete(requestId);
+  async dismissRejectedWrite(id: string): Promise<void> {
+    await this.client.ledger.acknowledge(id);
     this.emit();
   }
 
@@ -332,6 +281,7 @@ export class NextPlannerRepository implements PlannerRepository {
   dispose(): void {
     this.scope.abort();
     this.changesWatch?.();
+    this.stopLedger?.();
     this.listeners.clear();
   }
 
@@ -353,16 +303,9 @@ export class NextPlannerRepository implements PlannerRepository {
       config: TaskTypeConfiguration,
     ) => JsonObject,
   ): Promise<PlannerTask> {
-    if (this.savingView || this.pendingMutations().length)
-      throw new Error("Check the pending write before making another change.");
     const signal = this.signal();
     const config = this.configuration(item);
     const configurations = this.configurations;
-    const identity = {
-      id: item.id,
-      providerType: config.typeName,
-      configurations,
-    };
     const generation = this.generation;
     const record = await this.client.get(
       { path: item.path },
@@ -372,7 +315,7 @@ export class NextPlannerRepository implements PlannerRepository {
     signal.throwIfAborted();
     if (
       !record.types.includes(config.typeName) ||
-      task(record, configurations).id !== identity.id
+      task(record, configurations).id !== item.id
     )
       throw new Error(
         "This task changed its identity. Reload it before editing.",
@@ -380,10 +323,6 @@ export class NextPlannerRepository implements PlannerRepository {
     if (record.state.hold || record.state.unresolved)
       throw new Error(
         "This task has a protected edit. Resolve it in TaskNotes before planning.",
-      );
-    if (record.state.state === "pending")
-      throw new Error(
-        "This task already has a pending edit. Wait for confirmation before planning.",
       );
     if (generation !== this.generation) throw changed();
     const fields = patch(record, config);
@@ -398,102 +337,45 @@ export class NextPlannerRepository implements PlannerRepository {
       else changes[role] = value as PlainValue;
     }
     if (!Object.keys(fields).length) return task(record, configurations);
-    // Another inspector or view save may have finished its read concurrently.
-    if (this.savingView || this.pendingMutations().length)
-      throw new Error("Check the pending write before making another change.");
-    const mutationId = crypto.randomUUID();
-    this.pending.set(mutationId, {
-      requestId: mutationId,
-      operation: "update",
-      createdAt: new Date().toISOString(),
-      recordId: record.id,
-      identity,
-    });
-    // Even an internal SDK response error can follow native capture. Keep the
-    // original identity until an actual receipt and current readback qualify it.
-    const write = await this.client.update(
-      record,
-      {
-        contract: {
-          id: "tasknotes.task",
-          version: TASKNOTES_SPEC_VERSION,
-          type: config.typeName,
+    // Unconfirmed writes are the SDK's: saved on this device, settled by its
+    // write ledger, and listed in `rejectedWrites` if the log refuses them.
+    const result = await this.client.save(
+      this.client.update(
+        record,
+        {
+          contract: {
+            id: "tasknotes.task",
+            version: TASKNOTES_SPEC_VERSION,
+            type: config.typeName,
+          },
+          patch: changes,
+          ...(unset.length ? { unset } : {}),
+          ifRevision: record.revision,
         },
-        patch: changes,
-        ...(unset.length ? { unset } : {}),
-        ifRevision: record.revision,
-      },
-      { mutationId, signal },
+        { signal },
+      ),
+      { readBack: true, signal },
     );
-    if (write.mutationId !== mutationId)
-      throw new Error("The write changed its mutation identity.");
-    const saved = await this.confirm(mutationId, signal);
-    if (!saved)
-      throw new Error("The saved task's native target is unavailable.");
-    const result = task(saved, configurations);
-    if (
-      result.id !== identity.id ||
-      result.providerType !== identity.providerType
-    )
-      throw new Error(
-        "The saved task changed its portable identity. Refresh Planner.",
-      );
-    this.pending.delete(mutationId);
-    return result;
-  }
-
-  private async confirm(
-    mutation: string,
-    signal: AbortSignal,
-  ): Promise<wire.RecordView | undefined> {
-    const receipt = await this.client.awaitReceipt(mutation, 30_000, signal);
-    signal.throwIfAborted();
-    if (receipt.mutation !== mutation)
-      throw new Error("The receipt changed its mutation identity.");
-    if (receipt.state === "pending" || receipt.state === "unknown")
-      throw new Error(
-        "The write outcome is not confirmed. Check the pending write before trying again.",
-      );
-    if (receipt.state === "rejected") {
-      this.pending.delete(mutation);
-      throw receipt.problem
-        ? new MdbaseError(receipt.problem)
+    if (result.outcome === "rejected") {
+      // Shown here, so not again as a rejected write.
+      await this.client.ledger.acknowledge(result.mutationId);
+      throw result.problem
+        ? new MdbaseError(result.problem)
         : new Error("The task change was rejected.");
     }
-    if (receipt.status === "conflicted") {
-      this.pending.delete(mutation);
+    const saved = result.record;
+    if (!saved)
+      throw new Error("The saved task's native target is unavailable.");
+    if (saved.state.hold || saved.state.unresolved)
       throw new Error(
         "This change has a conflict. Resolve it in TaskNotes before planning.",
       );
-    }
-    const intent = this.pending.get(mutation);
-    const target = intent?.recordId;
-    if (!target) return undefined;
-    const record = await this.client.get(target, { effective: true }, signal);
-    signal.throwIfAborted();
-    if (
-      record.id !== target ||
-      record.state.state !== "confirmed" ||
-      record.state.hold ||
-      record.state.unresolved
-    )
+    const next = task(saved, configurations);
+    if (next.id !== item.id || next.providerType !== config.typeName)
       throw new Error(
-        "The current task is pending or protected. Keep the original write for recovery before reporting it as saved.",
+        "The saved task changed its portable identity. Refresh Planner.",
       );
-    // Live recovery must apply the original portable identity/provider witness,
-    // not qualify the same rejected readback using only native UUID/state.
-    // Restored intents do not invent this lost application metadata.
-    if (intent?.identity) {
-      const saved = task(record, intent.identity.configurations);
-      if (
-        saved.id !== intent.identity.id ||
-        saved.providerType !== intent.identity.providerType
-      )
-        throw new Error(
-          "The saved task changed its portable identity. Refresh Planner.",
-        );
-    }
-    return record;
+    return next;
   }
 
   private signal(): AbortSignal {
@@ -510,6 +392,7 @@ export class NextPlannerRepository implements PlannerRepository {
       this.changesWatch = undefined;
     }
     if (!this.changesWatch) {
+      this.stopLedger ??= this.watchRejections();
       const watch = this.client.watchChanges(undefined, () => this.emit());
       this.changesWatch = watch;
       watch.subscribe((state) => {
@@ -522,6 +405,22 @@ export class NextPlannerRepository implements PlannerRepository {
     signal.throwIfAborted();
     if (this.changesWatch.state !== "active")
       throw this.changesWatch.error ?? changed();
+  }
+
+  /** A write refused after it was saved on this device: reload and show it. */
+  private watchRejections(): () => void {
+    let rejected = this.client.ledger.getSnapshot().rejected;
+    return this.client.ledger.subscribe(() => {
+      const next = this.client.ledger.getSnapshot().rejected;
+      if (next === rejected) return;
+      const changed =
+        next.length !== rejected.length ||
+        next.some(
+          (entry, index) => entry.mutationId !== rejected[index]?.mutationId,
+        );
+      rejected = next;
+      if (changed) this.emit();
+    });
   }
 
   private emit(): void {

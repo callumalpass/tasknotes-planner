@@ -1,9 +1,4 @@
-import {
-  connect,
-  MdbaseError,
-  type MdbaseClient,
-  type wire,
-} from "@mdbase-dev/sdk";
+import { connect, type MdbaseClient, type wire } from "@mdbase-dev/sdk";
 import { MemoryReplica } from "@mdbase-dev/sdk/testing";
 import type { AppBasesDescriptor } from "@mdbase-dev/sdk/app-host";
 import { parse } from "yaml";
@@ -42,11 +37,10 @@ const generated = `views:
 `;
 
 async function fixture(
-  pending = false,
   options: { source?: string; role?: wire.Role; capabilities?: string[] } = {},
 ) {
   const replica = new MemoryReplica({
-    confirmDelayMs: pending ? null : 0,
+    confirmDelayMs: 0,
     role: options.role,
     capabilities: options.capabilities,
   });
@@ -189,7 +183,6 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
         include: { document: true },
       }),
     );
-    expect(f.views.pendingMutations()).toEqual([]);
   });
 
   it("refuses a stale native source before submitting a replacement", async () => {
@@ -207,7 +200,6 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
       f.views.save({ name: "Updated", view }, generated, f.signal),
     ).rejects.toThrow("source changed");
     expect(update).not.toHaveBeenCalled();
-    expect(f.views.pendingMutations()).toEqual([]);
   });
 
   it("refuses incomplete full-source fallback before mutation capture", async () => {
@@ -220,7 +212,6 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
       f.views.save({ name: "Updated", view }, generated, f.signal),
     ).rejects.toThrow("complete RecordView");
     expect(update).not.toHaveBeenCalled();
-    expect(f.views.pendingMutations()).toEqual([]);
   });
 
   it("refuses a protected current source before any native replacement", async () => {
@@ -235,103 +226,8 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
     const update = vi.spyOn(f.client.views, "updateSource");
     await expect(
       f.views.save({ name: "Updated", view }, generated, f.signal),
-    ).rejects.toThrow("source is pending or protected");
+    ).rejects.toThrow("protected edit");
     expect(update).not.toHaveBeenCalled();
-    expect(f.views.pendingMutations()).toEqual([]);
-  });
-
-  it("recovers the same captured source mutation after an ambiguous SDK error without resubmission", async () => {
-    const f = await fixture(true);
-    const [view] = await f.views.list(f.signal);
-    const original = f.client.views.updateSource.bind(f.client.views);
-    let captured = "";
-    const update = vi
-      .spyOn(f.client.views, "updateSource")
-      .mockImplementation(async (base, document, options) => {
-        const write = await original(base, document, options);
-        captured = write.mutationId;
-        throw new MdbaseError({
-          code: "internal",
-          recovery: "contact_support",
-          reason: "invalid_submit_result",
-          message: "Post-capture response error",
-        });
-      });
-    await expect(
-      f.views.save({ name: "Updated", view }, generated, f.signal),
-    ).rejects.toMatchObject({ code: "internal" });
-    expect(
-      (await f.client.pendingWrites()).some(
-        (write) => write.receipt.mutation === captured,
-      ),
-    ).toBe(true);
-    expect(f.views.pendingMutations()).toEqual([
-      expect.objectContaining({
-        requestId: captured,
-        operation: "view-update",
-      }),
-    ]);
-    await expect(
-      f.views.save({ name: "Updated", view }, generated, f.signal),
-    ).rejects.toThrow("pending view write");
-    f.replica.confirmAll();
-    await f.views.recoverPendingMutation(captured, f.signal);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(f.views.pendingMutations()).toEqual([]);
-  });
-
-  it("does not publish a confirmed receipt's pending current source as a saved view", async () => {
-    const f = await fixture(true);
-    const [view] = await f.views.list(f.signal);
-    const original = f.client.awaitReceipt.bind(f.client);
-    const receipt = vi
-      .spyOn(f.client, "awaitReceipt")
-      .mockImplementation(async (mutation, timeout, signal) => {
-        f.replica.confirmAll();
-        const confirmed = await original(mutation, timeout, signal);
-        const current = await f.client.views.getSourceRecord(f.seeded.id);
-        await f.client.views.updateSource(
-          current,
-          `${current.document}\n# Other pending source change\n`,
-          { mutationId: crypto.randomUUID() },
-        );
-        expect(
-          (await f.client.views.getSourceRecord(f.seeded.id)).state.state,
-        ).toBe("pending");
-        return confirmed;
-      });
-    await expect(
-      f.views.save({ name: "Updated", view }, generated, f.signal),
-    ).rejects.toThrow("source is pending or protected");
-    const [pending] = f.views.pendingMutations();
-    expect(pending).toBeDefined();
-    receipt.mockRestore();
-    f.replica.confirmAll();
-    await f.views.recoverPendingMutation(pending.requestId, f.signal);
-    expect(f.views.pendingMutations()).toEqual([]);
-  });
-
-  it("restores native source intent UUIDs without inventing the lost selected ordinal", async () => {
-    const f = await fixture(true);
-    const base = await f.client.views.getSourceRecord(f.seeded.id);
-    const write = await f.client.views.updateSource(
-      base,
-      `${source}\n# Captured\n`,
-      { mutationId: crypto.randomUUID() },
-    );
-    const reopened = new NextPlannerViews(f.client);
-    reopened.restorePending(await f.client.pendingWrites());
-    expect(reopened.pendingMutations()).toEqual([
-      expect.objectContaining({
-        requestId: write.mutationId,
-        operation: "view-update",
-      }),
-    ]);
-    f.replica.confirmAll();
-    const submit = vi.spyOn(f.client, "submit");
-    await reopened.recoverPendingMutation(write.mutationId, f.signal);
-    expect(submit).not.toHaveBeenCalled();
-    expect(reopened.pendingMutations()).toEqual([]);
   });
 
   it("creates a separate source with original record/MID identities rather than overwriting an existing name", async () => {
@@ -367,7 +263,7 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
   ])(
     "does not advertise or capture source edits without an edit grant ($role)",
     async (grant) => {
-      const f = await fixture(false, grant);
+      const f = await fixture(grant);
       const [view] = await f.views.list(f.signal);
       expect(view.writable).toBe(false);
       const update = vi.spyOn(f.client.views, "updateSource");
@@ -375,7 +271,6 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
         f.views.save({ name: "Updated", view }, generated, f.signal),
       ).rejects.toThrow();
       expect(update).not.toHaveBeenCalled();
-      expect(f.views.pendingMutations()).toEqual([]);
     },
   );
 
@@ -388,7 +283,7 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
   ])(
     "does not mint source create identities without a create grant ($role)",
     async (grant) => {
-      const f = await fixture(false, grant);
+      const f = await fixture(grant);
       const create = vi.spyOn(f.client.views, "createSource");
       const uuid = vi.spyOn(crypto, "randomUUID");
       await expect(
@@ -396,19 +291,17 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
       ).rejects.toThrow("supplied session");
       expect(create).not.toHaveBeenCalled();
       expect(uuid).not.toHaveBeenCalled();
-      expect(f.views.pendingMutations()).toEqual([]);
     },
   );
 
   it.each([
-    { state: "pending" as const },
     {
       state: "confirmed" as const,
       hold: { id: crypto.randomUUID(), reason: "conflict" as const },
     },
     { state: "confirmed" as const, unresolved: 1 },
   ])(
-    "does not advertise pending or protected source state as writable (%#)",
+    "does not advertise protected source state as writable (%#)",
     async (state) => {
       const f = await fixture();
       const original = f.client.get.bind(f.client);
@@ -421,9 +314,8 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
       const update = vi.spyOn(f.client.views, "updateSource");
       await expect(
         f.views.save({ name: "Updated", view }, generated, f.signal),
-      ).rejects.toThrow("pending or protected");
+      ).rejects.toThrow("protected edit");
       expect(update).not.toHaveBeenCalled();
-      expect(f.views.pendingMutations()).toEqual([]);
     },
   );
 
@@ -448,14 +340,13 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
   ])(
     "refuses selected YAML sharing before source capture (%#)",
     async (aliased) => {
-      const f = await fixture(false, { source: aliased });
+      const f = await fixture({ source: aliased });
       const [view] = await f.views.list(f.signal);
       const update = vi.spyOn(f.client.views, "updateSource");
       await expect(
         f.views.save({ name: "Updated", view }, generated, f.signal),
       ).rejects.toThrow();
       expect(update).not.toHaveBeenCalled();
-      expect(f.views.pendingMutations()).toEqual([]);
       expect((await f.client.views.getSourceRecord(f.seeded.id)).document).toBe(
         aliased,
       );
