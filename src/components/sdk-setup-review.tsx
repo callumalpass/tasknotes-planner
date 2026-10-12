@@ -29,6 +29,29 @@ function setupOutcome(error: unknown): "changed" | "unknown" | "failed" {
 /** Nothing to review: no changes, no conflicts and no refusal. */
 const quiet = (plan: MdbaseSetupPlan): boolean =>
   !plan.refusal && plan.changes.length === 0 && plan.conflicts.length === 0;
+/** Version parts compared numerically, prerelease tags included. */
+const versionParts = (version: string): number[] =>
+  version.split(/[.+-]/).flatMap((part) => (/^\d+$/.test(part) ? [+part] : []));
+const newer = (installed: string, ours: string): boolean => {
+  const a = versionParts(installed);
+  const b = versionParts(ours);
+  for (let i = 0; i < Math.max(a.length, b.length); i++)
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return false;
+};
+/** A blocked plan must say why, even when the SDK gives no refusal. */
+function blockedSetupReason(plan: MdbaseSetupPlan): string | null {
+  if (plan.canApply || plan.status === "current" || plan.refusal) return null;
+  const ahead = plan.packs.find(
+    (pack) =>
+      pack.status === "conflict" &&
+      pack.installedVersion !== undefined &&
+      newer(pack.installedVersion, pack.version),
+  );
+  if (ahead)
+    return `This collection already uses a newer version of ${ahead.id} (${ahead.installedVersion}) than this version of Planner supports (${ahead.version}). Update Planner to continue. Nothing was changed.`;
+  return "Planner can't set up this collection as it is. Nothing was changed.";
+}
 const describe = (error: unknown, fallback: string): string =>
   describeError(error)?.message ?? fallback;
 
@@ -160,6 +183,10 @@ export function SdkSetupReview({
       {shown?.refusal ? (
         <p className="setup-refusal" role="alert">
           {shown.refusal.message}
+        </p>
+      ) : shown && blockedSetupReason(shown) ? (
+        <p className="setup-refusal" role="alert">
+          {blockedSetupReason(shown)}
         </p>
       ) : null}
       {shown && (shown.changes.length > 0 || shown.conflicts.length > 0) ? (

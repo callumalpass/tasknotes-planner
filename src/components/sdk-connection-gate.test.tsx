@@ -20,6 +20,8 @@ import {
   type MdbaseSetupPlan,
 } from "@mdbase-dev/sdk";
 import { createApplicationFixture } from "@mdbase-dev/sdk/testing";
+import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
+import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 import manifest from "../generated-mdbase-app.json";
 import { nativePlannerFixture } from "../test/native-planner-fixture";
 import { SdkConnectionGate, type PlannerSdk } from "./sdk-connection-gate";
@@ -820,6 +822,46 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     expect(screen.getByRole("heading", { name: "Review setup" })).toBeVisible();
     expect(signal?.aborted).toBe(false);
     await act(async () => finish());
+  });
+
+  it("a collection with a newer TaskNotes pack explains that Planner needs an update instead of a silent disabled Confirm", async () => {
+    const h = setupFixture(async () => h.application.getSnapshot(), {
+      ...setupPlan,
+      status: "conflict",
+      canApply: false,
+      changes: [
+        {
+          kind: "update",
+          target: "_contracts/tasknotes.task.md",
+          message: 'Update the "tasknotes.task" contract.',
+        },
+      ],
+      packs: [
+        {
+          id: "tasknotes.task",
+          version: "0.3.0-rc.12",
+          status: "conflict",
+          installedVersion: "0.3.0-rc.18",
+        },
+      ],
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /newer version of tasknotes\.task \(0\.3\.0-rc\.18\).*Update Planner to continue/,
+    );
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    expect(h.setup.apply).not.toHaveBeenCalled();
+  });
+
+  it("Planner provisions the same tasknotes.task pack TaskNotes ships, so a shared collection never conflicts", async () => {
+    const pack = manifest.provisions.type_packs.find(
+      (candidate) => candidate.manifest.id === "tasknotes.task",
+    );
+    expect(pack?.manifest.version).toBe("0.3.0-rc.18");
+    expect(manifest.requirements.contracts).toContainEqual({
+      id: "tasknotes.task",
+      version: TASKNOTES_SPEC_VERSION,
+      digest: TASKNOTES_CONTRACT_DIGEST,
+    });
   });
 
   it("setup shows the SDK's review and writes nothing until Confirm applies that exact plan", async () => {

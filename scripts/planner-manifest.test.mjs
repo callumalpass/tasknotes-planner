@@ -31,7 +31,7 @@ describe("Planner mdbase manifest", () => {
     expect(manifest.provisions.type_packs[0].manifest.version).toBe(
       TASKNOTES_TYPE_PACK_VERSION,
     );
-    expect(TASKNOTES_TYPE_PACK_VERSION).toBe("0.3.0-rc.12");
+    expect(TASKNOTES_TYPE_PACK_VERSION).toBe("0.3.0-rc.18");
     expect(manifest.provisions.type_packs[0]).toMatchObject({
       manifest: {
         id: "tasknotes.task",
