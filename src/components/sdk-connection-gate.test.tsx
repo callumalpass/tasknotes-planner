@@ -806,6 +806,22 @@ describe("Planner public application surface (typed UI stand-ins, not runtime ac
     return { ...h, setup };
   }
 
+  it("a status change while setup applies keeps the review and its apply running", async () => {
+    let signal: AbortSignal | undefined;
+    let finish!: () => void;
+    const h = setupFixture(async (_plan, options) => {
+      signal = options?.signal;
+      act(() => h.publish({ status: "opening" }));
+      await new Promise<void>((resolve) => (finish = resolve));
+      return h.application.getSnapshot();
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(h.setup.apply).toHaveBeenCalledOnce());
+    expect(screen.getByRole("heading", { name: "Review setup" })).toBeVisible();
+    expect(signal?.aborted).toBe(false);
+    await act(async () => finish());
+  });
+
   it("setup shows the SDK's review and writes nothing until Confirm applies that exact plan", async () => {
     const h = setupFixture(async () => h.application.getSnapshot());
     expect(await screen.findByText(setupPlan.summary)).toBeVisible();

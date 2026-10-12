@@ -231,7 +231,7 @@ function SdkApplicationView({
       : closed
         ? "Planner has signed out. Reload to sign in again."
         : waiting
-          ? "Waiting for approval in the mdbase tab…"
+          ? "Waiting for approval in the mdbase window…"
           : invalid
             ? "This link doesn't name a collection Planner can open."
             : approval
@@ -252,7 +252,9 @@ function SdkApplicationView({
                             ? `Opening ${selected?.displayName ?? "your collection"}…`
                             : "Sign in with your mdbase account to sync TaskNotes Planner across your devices.";
 
-  if (reviewing && setup && selected) {
+  // The review stays until it finishes or is cancelled: status changes while
+  // setup is applying must not unmount it and abort the apply.
+  if (reviewing && selected) {
     return (
       <main className="welcome">
         <SdkSetupReview
