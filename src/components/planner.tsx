@@ -33,6 +33,7 @@ import {
 } from "../domain/gantt";
 import { GanttChart } from "./gantt-chart";
 import { TaskInspector } from "./task-inspector";
+import { useModalFocus } from "./use-modal-focus";
 import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
 
 import type {
@@ -66,6 +67,8 @@ export function Planner({
     new URLSearchParams(location.search).get("view"),
   );
   const [saveOpen, setSaveOpen] = useState(false);
+  const saveDialogRef = useRef<HTMLFormElement>(null);
+  useModalFocus(saveOpen, saveDialogRef, () => setSaveOpen(false));
   const [saveName, setSaveName] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -546,7 +549,9 @@ export function Planner({
         <div className="planner-dialog-backdrop" role="presentation">
           <form
             aria-labelledby="save-view-title"
+            aria-modal="true"
             className="planner-dialog"
+            ref={saveDialogRef}
             role="dialog"
             onSubmit={(event) => void saveView(event)}
           >
@@ -570,7 +575,7 @@ export function Planner({
             <label>
               <span>View name</span>
               <input
-                autoFocus
+                data-autofocus
                 required
                 value={saveName}
                 onChange={(event) => setSaveName(event.target.value)}

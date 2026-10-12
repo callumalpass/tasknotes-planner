@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MdbaseConnectError, type ConnectProblem } from "@mdbase-dev/connect";
 
 import { Planner } from "./planner";
@@ -338,6 +344,35 @@ describe("Planner connection recovery", () => {
     expect(repository.updateProperties).not.toHaveBeenCalled();
     expect(repository.toggleCompletion).not.toHaveBeenCalled();
     expect(repository.saveView).not.toHaveBeenCalled();
+  });
+});
+
+describe("Planner save view dialog", () => {
+  it("keeps Tab inside the dialog and returns focus to the opener on Escape", async () => {
+    render(
+      <Planner
+        repository={repositoryFixture()}
+        onChangeCollection={() => undefined}
+      />,
+    );
+    const opener = await screen.findByRole("button", { name: "Save view" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole("dialog", { name: "Create Planner view" });
+    expect(screen.getByRole("textbox", { name: "View name" })).toHaveFocus();
+    const close = within(dialog).getByRole("button", { name: "Close" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    fireEvent.keyDown(cancel, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
   });
 });
 
