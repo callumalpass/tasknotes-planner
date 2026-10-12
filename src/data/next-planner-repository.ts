@@ -261,6 +261,14 @@ export class NextPlannerRepository implements PlannerRepository {
     }));
   }
 
+  savedOnDevice(): boolean {
+    return this.client.ledger.getSnapshot().saveState === "saved_on_device";
+  }
+
+  onSaveState(listener: () => void): () => void {
+    return this.client.ledger.subscribe(listener);
+  }
+
   async dismissRejectedWrite(id: string): Promise<void> {
     await this.client.ledger.acknowledge(id);
     this.emit();

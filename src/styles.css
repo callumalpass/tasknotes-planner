@@ -655,6 +655,14 @@ select:focus-visible {
   font-size: 14px;
 }
 
+.planner-sync-status {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
 /* Gantt */
 .gantt-frame {
   position: relative;

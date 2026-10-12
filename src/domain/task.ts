@@ -121,5 +121,9 @@ export interface PlannerRepository {
   recoverPendingMutation?(requestId: string): Promise<void>;
   rejectedWrites?(): readonly RejectedPlannerWrite[];
   dismissRejectedWrite?(id: string): Promise<void>;
+  /** True while changes are kept on this device because the collection
+   * can't be reached right now (offline, unreachable or busy). */
+  savedOnDevice?(): boolean;
+  onSaveState?(listener: () => void): () => void;
   watch?(listener: () => void): Promise<() => void>;
 }

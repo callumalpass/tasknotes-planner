@@ -254,6 +254,25 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     expect(f.repo.rejectedWrites()).toEqual([]);
   });
 
+  it("reports changes kept on this device while the collection is offline", async () => {
+    const f = await fixture({ pending: true });
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementation((write, options) =>
+      save(write, { ...options, timeoutMs: 10 }),
+    );
+    const changed = vi.fn();
+    const stop = f.repo.onSaveState(changed);
+    f.replica.setOnline(false);
+    const [item] = (await f.repo.load()).tasks;
+    await f.repo.updateSchedule(item, { due: "2026-10-12" });
+    await vi.waitFor(() => expect(f.repo.savedOnDevice()).toBe(true));
+    expect(changed).toHaveBeenCalled();
+    f.replica.setOnline(true);
+    f.replica.confirmAll();
+    await vi.waitFor(() => expect(f.repo.savedOnDevice()).toBe(false));
+    stop();
+  });
+
   it("preserves portable completion behavior and customized fields", async () => {
     const f = await fixture();
     const [item] = (await f.repo.load()).tasks;

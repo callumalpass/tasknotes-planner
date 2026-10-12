@@ -18,6 +18,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
   useState,
   type FormEvent,
   type ReactNode,
@@ -47,6 +48,8 @@ import type {
   TaskDependency,
   TaskPropertyUpdate,
 } from "../domain/task";
+
+const noop = () => {};
 
 export function Planner({
   repository,
@@ -91,6 +94,14 @@ export function Planner({
   const refreshTimer = useRef<number | null>(null);
   const mutationsDisabled =
     pendingMutations.length > 0 || Boolean(recoveringMutation);
+
+  const savedOnDevice = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => repository.onSaveState?.(listener) ?? noop,
+      [repository],
+    ),
+    () => repository.savedOnDevice?.() ?? false,
+  );
 
   const refreshPendingMutations = useCallback(() => {
     setPendingMutations(repository.pendingMutations?.() ?? []);
@@ -504,6 +515,11 @@ export function Planner({
       {collectionActionError ? (
         <p className="planner-error" role="alert">
           {collectionActionError}
+        </p>
+      ) : null}
+      {savedOnDevice ? (
+        <p className="planner-sync-status" role="status">
+          Saved on this device; waiting for sync
         </p>
       ) : null}
       {pendingMutations.map((pending) => (
