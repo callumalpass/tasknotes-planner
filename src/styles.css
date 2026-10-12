@@ -196,24 +196,6 @@ select:focus-visible {
   margin-top: 35px;
 }
 
-.welcome-notice {
-  max-width: 490px;
-  margin-top: 24px;
-}
-
-.welcome-notice h2 {
-  margin: 0 0 8px;
-  font-size: 19px;
-}
-
-.welcome-notice p {
-  margin: 0;
-}
-
-.welcome-notice .welcome-actions {
-  margin-top: 16px;
-}
-
 .primary-action,
 .save-action {
   min-height: 44px;
@@ -354,23 +336,6 @@ select:focus-visible {
   color: var(--danger);
 }
 
-/* The SDK setup review stands alone, centred in the connection page. */
-.sdk-setup-review {
-  grid-column: 1 / -1;
-  justify-self: center;
-}
-
-.setup-refusal {
-  margin: 0;
-  padding: 12px 20px 0;
-  color: var(--danger);
-}
-
-.sdk-setup-actions {
-  margin: 0;
-  padding: 18px 20px 20px;
-}
-
 .preview-topline,
 .preview-row {
   display: grid;
@@ -493,14 +458,14 @@ select:focus-visible {
   min-width: 0;
 }
 
-.planner-brand > div > span {
+.planner-brand > div > span:not(.mdbase-collections) {
   display: block;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.1;
 }
 
-.planner-brand button {
+.planner-brand > div > button {
   max-width: 270px;
   min-height: 24px;
   display: flex;
@@ -1783,11 +1748,11 @@ select:focus-visible {
     min-height: 63px;
   }
 
-  .planner-brand > div > span {
+  .planner-brand > div > span:not(.mdbase-collections) {
     font-size: 15px;
   }
 
-  .planner-brand button {
+  .planner-brand > div > button {
     max-width: 190px;
   }
 
@@ -1826,5 +1791,70 @@ select:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Shared mdbase collection UI, drawn with Planner's tokens. */
+:root {
+  --mdbase-collections-accent: var(--accent);
+  --mdbase-collections-on-accent: var(--paper);
+  --mdbase-collections-surface: var(--paper-raised);
+  --mdbase-collections-canvas: var(--paper);
+  --mdbase-collections-text: var(--ink);
+  --mdbase-collections-text-soft: var(--ink-soft);
+  --mdbase-collections-border: var(--line-strong);
+  --mdbase-collections-danger: var(--danger);
+  --mdbase-collections-radius: 6px;
+  --mdbase-collections-font: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mdbase-collections-control-height: 44px;
+}
+
+/* The scale the shared UI reads (Planner has no tokens of these names). */
+.mdbase-collections {
+  --font-size-ui: 15px;
+  --font-size-caption: 13px;
+  --font-size-section: 16px;
+  --font-size-heading: 30px;
+  --font-weight-semibold: 700;
+  --radius-sm: 6px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --elevation-low: 0 4px 14px rgb(32 36 44 / 0.08);
+  --elevation-high: var(--shadow);
+  --motion-spin: 800ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdbase-collections {
+    --motion-spin: 0ms;
+  }
+}
+
+/* The header switcher keeps the collection line's small mono type. */
+.planner-collection-switcher {
+  --mdbase-collections-control-height: 24px;
+  margin-left: -6px;
+}
+
+.planner-collection-switcher .mdbase-collections-trigger {
+  max-width: 270px;
+  padding: 1px 6px;
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 10px;
+}
+
+.planner-collection-switcher .mdbase-collections-trigger-name {
+  font-weight: 500;
+}
+
+.planner-collection-switcher .mdbase-collections-chevron {
+  width: 12px;
+  height: 12px;
+}
+
+@media (max-width: 560px) {
+  .planner-collection-switcher .mdbase-collections-trigger {
+    max-width: 190px;
   }
 }

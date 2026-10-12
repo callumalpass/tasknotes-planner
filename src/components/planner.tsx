@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import {
@@ -49,9 +50,12 @@ import type {
 export function Planner({
   repository,
   onChangeCollection,
+  collectionSwitcher,
 }: {
   repository: PlannerRepository;
   onChangeCollection(): void | Promise<void>;
+  /** The shared mdbase collection switcher, in place of the collection button. */
+  collectionSwitcher?: ReactNode;
 }) {
   const [collection, setCollection] = useState<PlannerCollection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -336,11 +340,13 @@ export function Planner({
           <img alt="" src="/tasknotes-mark.svg" />
           <div>
             <span>TaskNotes Planner</span>
-            <button type="button" onClick={changeCollection}>
-              <Database aria-hidden="true" size={13} />
-              {collection.name}
-              <ChevronDown aria-hidden="true" size={13} />
-            </button>
+            {collectionSwitcher ?? (
+              <button type="button" onClick={changeCollection}>
+                <Database aria-hidden="true" size={13} />
+                {collection.name}
+                <ChevronDown aria-hidden="true" size={13} />
+              </button>
+            )}
           </div>
         </div>
         <div className="planner-heading">

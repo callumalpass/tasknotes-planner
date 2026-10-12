@@ -1,8 +1,8 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 
 import { DemoPlannerRepository } from "../data/demo-repository";
 import { Planner } from "./planner";
-import { SdkConnectionGate, type PlannerSdk } from "./sdk-connection-gate";
+import { useSampleMode } from "./use-sample-mode";
 
 // Native mode must not instantiate the legacy Connect session or selection.
 const ConnectionGate = lazy(async () => {
@@ -10,29 +10,13 @@ const ConnectionGate = lazy(async () => {
   return { default: module.ConnectionGate };
 });
 
-export function App({
-  sdk,
-  onSignedOut,
-}: { sdk?: PlannerSdk; onSignedOut?(): void } = {}) {
-  const [demo, setDemo] = useState(
-    () => new URL(location.href).searchParams.get("demo") === "1",
-  );
-  const leaveDemo = () => {
-    const url = new URL(location.href);
-    url.searchParams.delete("demo");
-    history.replaceState(history.state, "", url);
-    setDemo(false);
-  };
+/** Planner over legacy Connect (non-LAB builds). LAB builds use `SdkApp`. */
+export function App() {
+  const { demo, enter, leave } = useSampleMode();
   return demo ? (
     <Planner
       repository={new DemoPlannerRepository()}
-      onChangeCollection={leaveDemo}
-    />
-  ) : sdk ? (
-    <SdkConnectionGate
-      sdk={sdk}
-      onDemo={() => setDemo(true)}
-      onSignedOut={onSignedOut}
+      onChangeCollection={leave}
     />
   ) : (
     <Suspense
@@ -42,7 +26,7 @@ export function App({
         </main>
       }
     >
-      <ConnectionGate onDemo={() => setDemo(true)} />
+      <ConnectionGate onDemo={enter} />
     </Suspense>
   );
 }
