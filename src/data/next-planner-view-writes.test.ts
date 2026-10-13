@@ -253,6 +253,31 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
     ).toHaveLength(2);
   });
 
+  it("retries a lost-reply create under the same intent as one source", async () => {
+    const f = await fixture();
+    const create = vi.spyOn(f.client, "create");
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementationOnce(
+      async (write, options) => {
+        await save(write, options);
+        throw new Error("reply lost");
+      },
+    );
+    const input = { name: "Updated", intent: "save-view-1" };
+    await expect(f.views.save(input, generated, f.signal)).rejects.toThrow(
+      "reply lost",
+    );
+    const saved = await f.views.save(input, generated, f.signal);
+    expect(create).toHaveBeenCalledTimes(2);
+    const [first, second] = create.mock.calls;
+    expect(second[0].id).toBe(first[0].id);
+    expect(second[1]?.mutationId).toBe(first[1]?.mutationId);
+    expect(saved.key).toBe(`${first[0].id}#0`);
+    expect(
+      f.replica.allRecords.filter((record) => record.path.endsWith(".base")),
+    ).toHaveLength(2);
+  });
+
   // Clients' independent regressions; controlled metadata, not native/LAB proof.
   it.each([
     {

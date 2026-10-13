@@ -78,6 +78,7 @@ export function Planner({
   const saveDialogRef = useRef<HTMLFormElement>(null);
   useModalFocus(saveOpen, saveDialogRef, () => setSaveOpen(false));
   const [saveName, setSaveName] = useState("");
+  const [saveIntent, setSaveIntent] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -295,6 +296,7 @@ export function Planner({
 
   function openSaveView() {
     setSaveName(collection?.activeView?.name ?? "");
+    setSaveIntent(crypto.randomUUID());
     setSaveError("");
     setSaveOpen(true);
   }
@@ -311,6 +313,7 @@ export function Planner({
     try {
       const saved = await repository.saveView({
         name: saveName,
+        intent: saveIntent,
         ...(collection.activeView?.writable
           ? { view: collection.activeView }
           : {}),
@@ -620,7 +623,10 @@ export function Planner({
                 data-autofocus
                 required
                 value={saveName}
-                onChange={(event) => setSaveName(event.target.value)}
+                onChange={(event) => {
+                  setSaveName(event.target.value);
+                  setSaveIntent(crypto.randomUUID());
+                }}
               />
             </label>
             <p>

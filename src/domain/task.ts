@@ -76,6 +76,8 @@ export interface PlannerView {
 export interface SavePlannerViewInput extends PlannerViewOptions {
   name: string;
   view?: PlannerView;
+  /** Names one "save as new view" action; retries of it create one view. */
+  intent?: string;
 }
 
 export interface ScheduleUpdate {

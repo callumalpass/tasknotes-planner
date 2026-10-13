@@ -25,6 +25,8 @@ export interface NextPlannerViewAccess {
  * Names and paths are presentation only, never execution selectors. */
 export class NextPlannerViews implements NextPlannerViewAccess {
   private descriptors = new Map<string, AppBasesDescriptor>();
+  /** Record and mutation IDs per create intent, reused when that save is retried. */
+  private creates = new Map<string, { recordId: string; mutationId: string }>();
 
   constructor(private readonly client: MdbaseClient) {}
 
@@ -224,6 +226,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     let base: wire.RecordView | undefined;
     let ordinal = 0;
     let recordId: string;
+    let created: { recordId: string; mutationId: string } | undefined;
     if (input.view) {
       const descriptor = this.descriptors.get(input.view.key);
       if (
@@ -250,13 +253,22 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       recordId = base.id;
       document = replaceSelected(base.document!, descriptor, replacement);
     } else {
-      recordId = crypto.randomUUID();
+      created = (input.intent && this.creates.get(input.intent)) || {
+        recordId: crypto.randomUUID(),
+        mutationId: crypto.randomUUID(),
+      };
+      if (input.intent) this.creates.set(input.intent, created);
+      recordId = created.recordId;
     }
     signal.throwIfAborted();
     assertSourceGrant(this.client, base ? "records.edit" : "records.create");
     // The shared helper supplies actual source CAS; no read-and-overwrite. An
     // unconfirmed write is saved on this device and the SDK's ledger settles it.
-    const options = { mutationId: crypto.randomUUID(), signal };
+    const options = {
+      mutationId: created?.mutationId ?? crypto.randomUUID(),
+      ...(created && input.intent ? { intent: input.intent } : {}),
+      signal,
+    };
     const result = await this.client.save(
       base
         ? this.client.views.updateSource(base, document, options)
@@ -271,6 +283,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       { signal },
     );
     if (result.outcome === "rejected") {
+      if (input.intent) this.creates.delete(input.intent);
       await this.client.ledger.acknowledge(result.mutationId);
       throw result.problem
         ? new MdbaseError(result.problem)
@@ -283,7 +296,9 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     if (record.id !== recordId)
       throw new Error("The saved view changed its record identity.");
     assertWritable(record);
-    return this.savedView(record, ordinal, name, signal);
+    const saved = await this.savedView(record, ordinal, name, signal);
+    if (input.intent) this.creates.delete(input.intent);
+    return saved;
   }
 
   private async savedView(
