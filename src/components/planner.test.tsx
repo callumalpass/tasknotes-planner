@@ -376,6 +376,35 @@ describe("Planner save view dialog", () => {
   });
 });
 
+describe("Planner save as new view", () => {
+  it("retries a renamed save under the same intent", async () => {
+    const saveView = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("reply lost"))
+      .mockReturnValue(new Promise(() => undefined));
+    render(
+      <Planner
+        repository={repositoryFixture({ saveView })}
+        onChangeCollection={() => undefined}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Save view" }));
+    const dialog = screen.getByRole("dialog", { name: "Create Planner view" });
+    const name = screen.getByRole("textbox", { name: "View name" });
+    fireEvent.change(name, { target: { value: "First" } });
+    fireEvent.submit(name.closest("form")!);
+    await within(dialog).findByRole("alert");
+    fireEvent.change(name, { target: { value: "Renamed" } });
+    fireEvent.submit(name.closest("form")!);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(2));
+    const [[first], [retry]] = saveView.mock.calls as [
+      [{ intent: string }],
+      [{ intent: string; name: string }],
+    ];
+    expect(retry).toMatchObject({ name: "Renamed", intent: first.intent });
+  });
+});
+
 function repositoryFixture(
   overrides: Partial<PlannerRepository> = {},
 ): PlannerRepository {

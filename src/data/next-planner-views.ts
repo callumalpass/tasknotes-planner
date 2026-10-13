@@ -25,8 +25,12 @@ export interface NextPlannerViewAccess {
  * Names and paths are presentation only, never execution selectors. */
 export class NextPlannerViews implements NextPlannerViewAccess {
   private descriptors = new Map<string, AppBasesDescriptor>();
-  /** Record and mutation IDs per create intent, reused when that save is retried. */
-  private creates = new Map<string, { recordId: string; mutationId: string }>();
+  /** Record and mutation IDs, and the first definition sent, per create intent:
+   * a retry resends that exact create, even after the view is renamed. */
+  private creates = new Map<
+    string,
+    { recordId: string; mutationId: string; document: string }
+  >();
 
   constructor(private readonly client: MdbaseClient) {}
 
@@ -226,7 +230,8 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     let base: wire.RecordView | undefined;
     let ordinal = 0;
     let recordId: string;
-    let created: { recordId: string; mutationId: string } | undefined;
+    let created:
+      { recordId: string; mutationId: string; document: string } | undefined;
     if (input.view) {
       const descriptor = this.descriptors.get(input.view.key);
       if (
@@ -256,6 +261,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
       created = (input.intent && this.creates.get(input.intent)) || {
         recordId: crypto.randomUUID(),
         mutationId: crypto.randomUUID(),
+        document,
       };
       if (input.intent) this.creates.set(input.intent, created);
       recordId = created.recordId;
@@ -276,7 +282,7 @@ export class NextPlannerViews implements NextPlannerViewAccess {
             {
               id: recordId,
               path: `TaskNotes/Views/${recordId}.base`,
-              document,
+              document: created!.document,
             },
             options,
           ),
@@ -284,21 +290,47 @@ export class NextPlannerViews implements NextPlannerViewAccess {
     );
     if (result.outcome === "rejected") {
       if (input.intent) this.creates.delete(input.intent);
-      await this.client.ledger.acknowledge(result.mutationId);
-      throw result.problem
-        ? new MdbaseError(result.problem)
-        : new Error("The view change was rejected.");
+      await this.rejected(result);
     }
-    const record = await this.client.views.getSourceRecord(recordId, {
+    let record = await this.client.views.getSourceRecord(recordId, {
       signal,
     });
     signal.throwIfAborted();
+    if (
+      created &&
+      created.document !== document &&
+      record.document !== document
+    ) {
+      // A retry edited the definition (such as the name) after the first create
+      // was sent: that create stands, so apply this definition as an update.
+      assertWritable(record);
+      const update = await this.client.save(
+        this.client.views.updateSource(record, document, {
+          mutationId: crypto.randomUUID(),
+          signal,
+        }),
+        { signal },
+      );
+      if (update.outcome === "rejected") await this.rejected(update);
+      record = await this.client.views.getSourceRecord(recordId, { signal });
+      signal.throwIfAborted();
+    }
     if (record.id !== recordId)
       throw new Error("The saved view changed its record identity.");
     assertWritable(record);
     const saved = await this.savedView(record, ordinal, name, signal);
     if (input.intent) this.creates.delete(input.intent);
     return saved;
+  }
+
+  private async rejected(result: {
+    mutationId: string;
+    problem?: ConstructorParameters<typeof MdbaseError>[0];
+  }): Promise<never> {
+    await this.client.ledger.acknowledge(result.mutationId);
+    throw result.problem
+      ? new MdbaseError(result.problem)
+      : new Error("The view change was rejected.");
   }
 
   private async savedView(

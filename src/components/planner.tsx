@@ -632,10 +632,7 @@ export function Planner({
                 data-autofocus
                 required
                 value={saveName}
-                onChange={(event) => {
-                  setSaveName(event.target.value);
-                  setSaveIntent(crypto.randomUUID());
-                }}
+                onChange={(event) => setSaveName(event.target.value)}
               />
             </label>
             <p>

@@ -278,6 +278,33 @@ describe("NextPlannerViews shared source writes (controlled stand-in, not LAB)",
     ).toHaveLength(2);
   });
 
+  it("retries a lost-reply create renamed under the same intent as one source", async () => {
+    const f = await fixture();
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementationOnce(
+      async (write, options) => {
+        await save(write, options);
+        throw new Error("reply lost");
+      },
+    );
+    await expect(
+      f.views.save(
+        { name: "Updated", intent: "save-view-1" },
+        generated,
+        f.signal,
+      ),
+    ).rejects.toThrow("reply lost");
+    const saved = await f.views.save(
+      { name: "Renamed", intent: "save-view-1" },
+      generated.replace("name: Updated", "name: Renamed"),
+      f.signal,
+    );
+    expect(saved.name).toBe("Renamed");
+    expect(
+      f.replica.allRecords.filter((record) => record.path.endsWith(".base")),
+    ).toHaveLength(2);
+  });
+
   // Clients' independent regressions; controlled metadata, not native/LAB proof.
   it.each([
     {
