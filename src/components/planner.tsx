@@ -384,6 +384,9 @@ export function Planner({
         </div>
         <div className="header-actions">
           <button
+            aria-label={
+              collection.activeView?.writable ? "Save changes" : "Save view"
+            }
             className="save-view-control"
             disabled={mutationsDisabled}
             type="button"

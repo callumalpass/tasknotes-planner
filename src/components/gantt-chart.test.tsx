@@ -163,6 +163,102 @@ describe("GanttChart interactions", () => {
     expect(onZoom).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { target: "date header", clientX: 420, clientY: 50, saves: true },
+    { target: "task ledger", clientX: 120, clientY: 250, saves: false },
+    { target: "toolbar", clientX: 420, clientY: -10, saves: false },
+  ])(
+    "handles unscheduled title drops over the $target",
+    async ({ clientX, clientY, saves }) => {
+      const task = makeTask({ id: "title-drag", title: "Unscheduled title" });
+      const onScheduleChange = vi.fn().mockResolvedValue(undefined);
+      const onSelect = vi.fn();
+      render(
+        <GanttChart
+          allTasks={[task]}
+          selectedId={null}
+          tasks={[task]}
+          todayRequest={0}
+          zoom={3}
+          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+          onScheduleChange={onScheduleChange}
+          onSelect={onSelect}
+          onZoom={() => undefined}
+        />,
+      );
+      const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
+      vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 1200,
+        bottom: 900,
+        width: 1200,
+        height: 900,
+      } as DOMRect);
+      vi.spyOn(
+        document.querySelector<HTMLElement>(".timeline-row")!,
+        "getBoundingClientRect",
+      ).mockReturnValue({ left: 350 } as DOMRect);
+      const title = screen.getByRole("button", {
+        name: /Unscheduled title, not scheduled. Select to edit or drag/,
+      });
+      fireEvent.pointerDown(title, {
+        button: 0,
+        clientX: 160,
+        clientY: 250,
+        pointerId: 1,
+      });
+      fireEvent.pointerMove(window, { clientX, clientY, pointerId: 1 });
+      fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
+      fireEvent.click(title);
+      expect(onSelect).not.toHaveBeenCalled();
+      if (saves) {
+        await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
+        expect(onScheduleChange.mock.calls[0]).toEqual([
+          task,
+          {
+            due: undefined,
+            scheduled: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
+        ]);
+      } else {
+        expect(onScheduleChange).not.toHaveBeenCalled();
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+        );
+      }
+    },
+  );
+
+  it("keeps an unscheduled title click as task selection", () => {
+    const task = makeTask({ id: "title-click", title: "Unscheduled title" });
+    const onScheduleChange = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onDependenciesChange={vi.fn()}
+        onCompletionChange={vi.fn()}
+        onScheduleChange={onScheduleChange}
+        onSelect={onSelect}
+        onZoom={() => undefined}
+      />,
+    );
+    const title = screen.getByRole("button", {
+      name: /Unscheduled title, not scheduled/,
+    });
+    fireEvent.pointerDown(title, { button: 0, clientX: 160, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 160, pointerId: 1 });
+    fireEvent.click(title);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
+  });
+
   it("places an unscheduled task on the timeline by dragging", async () => {
     const task = makeTask({ id: "unscheduled", title: "Unscheduled" });
     const onScheduleChange = vi.fn().mockResolvedValue(undefined);

@@ -444,6 +444,7 @@ select:focus-visible {
 }
 
 .planner-brand {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -861,6 +862,16 @@ select:focus-visible {
   gap: 10px;
   padding: 0 13px 0 0;
   text-align: left;
+}
+
+.task-ledger-main.is-placeable {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.task-ledger-main.is-placeable:active {
+  cursor: grabbing;
 }
 
 .group-ledger {
@@ -1722,7 +1733,7 @@ select:focus-visible {
   }
 
   .planner-header {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .planner-heading {
@@ -1764,7 +1775,13 @@ select:focus-visible {
     max-width: 190px;
   }
 
-  .header-actions button:first-child {
+  .header-actions .save-view-control {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .save-view-control > span {
     display: none;
   }
 
@@ -1849,8 +1866,9 @@ select:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .planner-collection-switcher,
   .planner-collection-switcher .mdbase-collections-trigger {
-    max-width: 190px;
+    max-width: min(190px, 100%);
   }
 }
 

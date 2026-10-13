@@ -57,6 +57,7 @@ interface ScheduleDrag {
   timelineLeft: number;
   update: ScheduleUpdate;
   changed: boolean;
+  validPlacement: boolean;
 }
 
 interface SchedulePreview {
@@ -321,7 +322,9 @@ export function GanttChart({
     kind: ScheduleDragKind,
   ) {
     if (event.button !== 0) return;
-    const timeline = event.currentTarget.closest<HTMLElement>(".timeline-row");
+    const timeline = event.currentTarget
+      .closest<HTMLElement>(".gantt-row")
+      ?.querySelector<HTMLElement>(".timeline-row");
     if (!timeline) return;
     event.preventDefault();
     event.stopPropagation();
@@ -333,13 +336,14 @@ export function GanttChart({
       timelineLeft: timeline.getBoundingClientRect().left,
       update: { scheduled: task.scheduled, due: task.due },
       changed: false,
+      validPlacement: false,
     };
     window.addEventListener("pointermove", moveWindowScheduleDrag);
     window.addEventListener("pointerup", endWindowScheduleDrag);
     window.addEventListener("pointercancel", cancelWindowScheduleDrag);
   }
 
-  function moveScheduleDrag(event: { clientX: number }) {
+  function moveScheduleDrag(event: { clientX: number; clientY?: number }) {
     const current = scheduleDrag.current;
     if (!current) return;
     const rawDelta =
@@ -351,9 +355,28 @@ export function GanttChart({
     const delta = Math.round(rawDelta / step) * step;
     const moved = Math.abs(event.clientX - current.originClientX) >= 4;
     let update = current.update;
+    let validPlacement = current.validPlacement;
     if (current.kind === "move")
       update = shiftedScheduleByMinutes(current.task, delta);
     else if (current.kind === "place") {
+      const surface = scroller.current;
+      const bounds = surface?.getBoundingClientRect();
+      const left =
+        bounds?.width && surface
+          ? Math.max(
+              current.timelineLeft,
+              bounds.left + taskColumnWidth(surface),
+            )
+          : current.timelineLeft;
+      const right = bounds?.width
+        ? Math.min(current.timelineLeft + timelineWidth, bounds.right)
+        : current.timelineLeft + timelineWidth;
+      validPlacement =
+        event.clientX >= left &&
+        event.clientX < right &&
+        (event.clientY === undefined ||
+          !bounds?.height ||
+          (event.clientY >= bounds.top && event.clientY <= bounds.bottom));
       const offset = Math.max(
         0,
         Math.min(
@@ -380,8 +403,19 @@ export function GanttChart({
         update = resizedScheduleAt(current.task, edge, origin + delta, step);
       }
     }
-    scheduleDrag.current = { ...current, update, changed: moved };
-    if (moved) setSchedulePreview({ taskId: current.task.id, update });
+    scheduleDrag.current = {
+      ...current,
+      update,
+      changed: moved,
+      validPlacement,
+    };
+    if (moved) {
+      setSchedulePreview(
+        current.kind !== "place" || validPlacement
+          ? { taskId: current.task.id, update }
+          : null,
+      );
+    }
   }
 
   function endScheduleDrag() {
@@ -395,6 +429,16 @@ export function GanttChart({
     window.setTimeout(() => {
       suppressClick.current = false;
     }, 0);
+    if (current.kind === "place" && !current.validPlacement) {
+      showMessage(
+        {
+          tone: "neutral",
+          text: "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+        },
+        4_500,
+      );
+      return;
+    }
     void commitSchedule(current.task, current.update);
   }
 
@@ -925,7 +969,21 @@ function TaskRow({
             {row.task.completed ? <Check aria-hidden="true" size={12} /> : null}
           </span>
         </button>
-        <button className="task-ledger-main" type="button" onClick={select}>
+        <button
+          aria-label={
+            !existingSpan && !mutationsDisabled
+              ? `${row.task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
+              : undefined
+          }
+          className={`task-ledger-main${!existingSpan && !mutationsDisabled ? " is-placeable" : ""}`}
+          type="button"
+          onClick={select}
+          onPointerDown={
+            !existingSpan && !mutationsDisabled
+              ? (event) => onBeginScheduleDrag(event, row.task, "place")
+              : undefined
+          }
+        >
           <span className="ledger-title">
             <strong>{row.task.title}</strong>
             <small>{scheduleLabel(task)}</small>
