@@ -1,5 +1,7 @@
 # Unreleased
 
+- Stack schedule date and time controls on phone screens so the full date, including its year, remains readable.
+
 - Flag tasks scheduled after their due date in the ledger instead of displaying a reversed range. Their original dates remain available in the inspector, which also rejects adjacent reversed all-day dates.
 
 - Save schedule edits immediately after changing a task's priority or status, without requiring a reload when the collection's task bindings have not changed.

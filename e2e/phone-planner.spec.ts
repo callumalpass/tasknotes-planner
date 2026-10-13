@@ -51,6 +51,38 @@ for (const width of [320, 390]) {
   });
 }
 
+test("schedule dates and times have full-width rows on phones", async ({
+  page,
+}) => {
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/?demo=1");
+    await page
+      .getByRole("button", { name: /Select to edit or drag/ })
+      .first()
+      .click();
+    const inspector = page.locator(".task-inspector");
+    for (const field of ["Scheduled", "Due"]) {
+      const date = inspector.getByLabel(field, { exact: true });
+      const time = inspector.getByLabel(`${field} time`, { exact: true });
+      await date.fill("2026-11-07");
+      const dateBounds = await date.boundingBox();
+      const timeBounds = await time.boundingBox();
+      expect(dateBounds).not.toBeNull();
+      expect(timeBounds).not.toBeNull();
+      expect(dateBounds!.width).toBeGreaterThanOrEqual(240);
+      expect(timeBounds!.width).toBeGreaterThanOrEqual(240);
+      expect(timeBounds!.y).toBeGreaterThanOrEqual(
+        dateBounds!.y + dateBounds!.height,
+      );
+      expect(dateBounds!.x + dateBounds!.width).toBeLessThanOrEqual(width);
+    }
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
+});
+
 test("an unscheduled title can drop onto a date header and still opens the editor on click", async ({
   page,
 }) => {

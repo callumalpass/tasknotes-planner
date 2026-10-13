@@ -1812,6 +1812,16 @@ select:focus-visible {
     overflow-wrap: anywhere;
   }
 
+  .planning-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  .date-time-inputs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .task-inspector {
     top: auto;
     right: 0;
