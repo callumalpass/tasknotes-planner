@@ -87,3 +87,92 @@ test("an unscheduled title can drop onto a date header and still opens the edito
   await ledger.click();
   await expect(page.locator(".task-inspector")).toBeVisible();
 });
+
+const phonePrefix = "[test] bugfix3 same-prefix phone task";
+
+for (const width of [320, 390]) {
+  test(`same-prefix titles remain distinguishable with aligned rows at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/e2e/fixtures/phone-ledger.html");
+    await page.getByLabel(/^Search tasks/).fill(phonePrefix);
+    await expect(page.locator(".task-row")).toHaveCount(2);
+    await page.evaluate(() => document.fonts.ready);
+    for (const suffix of ["alpha", "beta"]) {
+      const title = page
+        .locator(".ledger-title strong")
+        .filter({ hasText: `${phonePrefix} ${suffix}` });
+      await expect(title).toHaveCSS("white-space", "normal");
+      expect(
+        await title.evaluate((element, suffix) => {
+          const text = element.firstChild;
+          const start = element.textContent!.lastIndexOf(suffix);
+          if (!text || start < 0) throw new Error("Title suffix is missing");
+          const range = document.createRange();
+          range.setStart(text, start);
+          range.setEnd(text, start + suffix.length);
+          const glyphs = range.getBoundingClientRect();
+          const bounds = element.getBoundingClientRect();
+          return (
+            glyphs.top >= bounds.top - 1 &&
+            glyphs.bottom <= bounds.bottom + 1 &&
+            glyphs.left >= bounds.left - 1 &&
+            glyphs.right <= bounds.right + 1
+          );
+        }, suffix),
+      ).toBe(true);
+    }
+    for (const row of await page.locator(".task-row").all()) {
+      expect((await row.boundingBox())!.height).toBe(65);
+      expect((await row.locator(".task-ledger").boundingBox())!.height).toBe(
+        65,
+      );
+      expect((await row.locator(".timeline-row").boundingBox())!.height).toBe(
+        65,
+      );
+      const bounds = (await row.boundingBox())!;
+      const action = (await row
+        .locator(".unscheduled-row-action")
+        .boundingBox())!;
+      expect(
+        Math.abs(action.y + action.height / 2 - bounds.y - bounds.height / 2),
+      ).toBeLessThanOrEqual(1);
+    }
+    await expect(page.locator(".dependency-layer")).toHaveAttribute(
+      "height",
+      "165",
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  });
+}
+
+test("row completion and reopening refresh the inspector without discarding a date draft", async ({
+  page,
+}) => {
+  await page.goto("/e2e/fixtures/phone-ledger.html");
+  await page.getByLabel(/^Search tasks/).fill(phonePrefix);
+  await page.getByRole("button", { name: "Completed", exact: true }).click();
+  const title = `${phonePrefix} alpha`;
+  await page.locator(".task-ledger-main").filter({ hasText: title }).click();
+  const inspector = page.locator(".task-inspector");
+  await inspector.getByLabel("Scheduled", { exact: true }).fill("2026-11-07");
+  await page
+    .getByRole("button", { name: `Complete ${title}`, exact: true })
+    .click();
+  await expect(inspector.getByLabel(/^Status/)).toHaveValue("done");
+  await expect(inspector.locator(".inspector-title p")).toContainText("Done");
+  await expect(inspector.getByLabel("Scheduled", { exact: true })).toHaveValue(
+    "2026-11-07",
+  );
+  await page
+    .getByRole("button", { name: `Reopen ${title}`, exact: true })
+    .click();
+  await expect(inspector.getByLabel(/^Status/)).toHaveValue("open");
+  await expect(inspector.locator(".inspector-title p")).toContainText("Open");
+  await expect(inspector.getByLabel("Scheduled", { exact: true })).toHaveValue(
+    "2026-11-07",
+  );
+});

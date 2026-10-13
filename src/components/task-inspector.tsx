@@ -7,6 +7,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useConfirmedDraft } from "./use-confirmed-draft";
 
 import {
   addOrReplaceDependency,
@@ -64,9 +65,16 @@ export function TaskInspector({
     useState<TaskDependencyRelType>("FINISHTOSTART");
   const [scheduleError, setScheduleError] = useState("");
   const [dependencyError, setDependencyError] = useState("");
-  const [status, setStatus] = useState(task.status);
-  const [priority, setPriority] = useState(task.priority);
-  const [projects, setProjects] = useState(task.projects);
+  const [status, setStatus, resetStatus] = useConfirmedDraft(task.status);
+  const [priority, setPriority, resetPriority] = useConfirmedDraft(
+    task.priority,
+  );
+  const [projects, setProjects, resetProjects] = useConfirmedDraft(
+    task.projects,
+    (left, right) =>
+      left.length === right.length &&
+      left.every((project, index) => project === right[index]),
+  );
   const [propertySaving, setPropertySaving] = useState(false);
   const [propertyError, setPropertyError] = useState("");
 
@@ -171,9 +179,9 @@ export function TaskInspector({
       await onSaveProperties(task, update);
     } catch (reason) {
       if (!isOperationOutcomeUnknown(reason)) {
-        setStatus(task.status);
-        setPriority(task.priority);
-        setProjects(task.projects);
+        resetStatus();
+        resetPriority();
+        resetProjects();
       }
       setPropertyError(errorMessage(reason));
     } finally {

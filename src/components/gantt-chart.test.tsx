@@ -31,6 +31,62 @@ beforeEach(() => {
 });
 
 describe("GanttChart interactions", () => {
+  it("uses the responsive row height for ledger rows, timeline body and dependency endpoints", () => {
+    const readStyle = getComputedStyle;
+    const styleSpy = vi
+      .spyOn(globalThis, "getComputedStyle")
+      .mockImplementation((element) => {
+        const style = readStyle(element);
+        const readProperty = style.getPropertyValue.bind(style);
+        style.getPropertyValue = (name) =>
+          name === "--task-row-height" ? "65px" : readProperty(name);
+        return style;
+      });
+    try {
+      const first = makeTask({
+        id: "first",
+        scheduled: "2026-08-17",
+        due: "2026-08-18",
+      });
+      const second = makeTask({
+        id: "second",
+        scheduled: "2026-08-19",
+        due: "2026-08-20",
+        blockedBy: [{ uid: "first", reltype: "FINISHTOSTART" }],
+      });
+      const tasks = [first, second];
+      const view = render(
+        <GanttChart
+          allTasks={tasks}
+          tasks={tasks}
+          selectedId={null}
+          todayRequest={0}
+          zoom={3}
+          onSelect={() => undefined}
+          onZoom={() => undefined}
+          onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+        />,
+      );
+      for (const row of view.container.querySelectorAll(".task-row")) {
+        expect(row).toHaveStyle({ height: "65px" });
+      }
+      expect(view.container.querySelector(".gantt-body")).toHaveStyle({
+        height: "165px",
+      });
+      expect(view.container.querySelector(".dependency-layer")).toHaveAttribute(
+        "height",
+        "165",
+      );
+      const path = view.container.querySelector(".dependency-layer > path");
+      expect(path?.getAttribute("d")).toContain("67.5");
+      expect(path?.getAttribute("d")).toContain("132.5");
+    } finally {
+      styleSpy.mockRestore();
+    }
+  });
+
   it("gates timeline writes while keeping task selection available", async () => {
     const task = makeTask({
       id: "blocked",

@@ -682,6 +682,7 @@ select:focus-visible {
 
 .gantt-canvas {
   --task-column: 350px;
+  --task-row-height: 49px;
   position: relative;
   min-width: 100%;
 }
@@ -996,7 +997,7 @@ select:focus-visible {
 .task-bar {
   position: absolute;
   z-index: 3;
-  top: 14px;
+  top: calc((var(--task-row-height) - 21px) / 2);
   height: 21px;
   min-width: 8px;
   border-radius: 4px;
@@ -1044,7 +1045,7 @@ select:focus-visible {
 }
 
 .task-bar.is-milestone {
-  top: 17px;
+  top: calc((var(--task-row-height) - 15px) / 2);
   width: 15px;
   height: 15px;
   min-width: 15px;
@@ -1792,6 +1793,19 @@ select:focus-visible {
 
   .gantt-canvas {
     --task-column: 280px;
+    --task-row-height: 65px;
+  }
+
+  .unscheduled-row-action {
+    margin-top: calc((var(--task-row-height) - 30px) / 2);
+  }
+
+  .ledger-title strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .task-inspector {

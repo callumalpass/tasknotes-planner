@@ -130,6 +130,7 @@ export function GanttChart({
     () => new Set(),
   );
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
+  const [taskHeight, setTaskHeight] = useState(TASK_HEIGHT);
   const today = dateFromDate(new Date());
   const now = new Date();
   const scale = useMemo(
@@ -141,7 +142,7 @@ export function GanttChart({
   const timelineWidth = scale.days.length * scale.cellWidth;
   const bodyHeight = rows.reduce(
     (height, row) =>
-      height + (row.kind === "group" ? GROUP_HEIGHT : TASK_HEIGHT),
+      height + (row.kind === "group" ? GROUP_HEIGHT : taskHeight),
     0,
   );
   const scaleStartMinute = planningMinute(scale.start)!;
@@ -159,6 +160,7 @@ export function GanttChart({
     if (!surface) return;
     const updateWidth = () => {
       const width = Math.max(0, surface.clientWidth - taskColumnWidth(surface));
+      setTaskHeight(taskRowHeight(surface));
       setTimelineViewportWidth((current) =>
         Math.abs(current - width) < 1 ? current : width,
       );
@@ -168,7 +170,7 @@ export function GanttChart({
     const observer = new ResizeObserver(updateWidth);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, []);
+  }, [rows.length]);
 
   useLayoutEffect(() => {
     const surface = scroller.current;
@@ -661,6 +663,7 @@ export function GanttChart({
                   selected={selectedId === row.task.id}
                   completionPending={completionPending.has(row.task.id)}
                   suppressClickRef={suppressClick}
+                  taskHeight={taskHeight}
                   timelineWidth={timelineWidth}
                   onBeginLink={beginLink}
                   onCompletionChange={commitCompletion}
@@ -678,6 +681,7 @@ export function GanttChart({
             )}
             <DependencyLayer
               bodyHeight={bodyHeight}
+              taskHeight={taskHeight}
               linkDrag={linkDrag}
               rows={rows}
               scale={scale}
@@ -852,6 +856,7 @@ function GroupRow({
 function TaskRow({
   row,
   timelineWidth,
+  taskHeight,
   scale,
   selected,
   completionPending,
@@ -873,6 +878,7 @@ function TaskRow({
 }: {
   row: Extract<GanttRow, { kind: "task" }>;
   timelineWidth: number;
+  taskHeight: number;
   scale: ReturnType<typeof timelineScale>;
   selected: boolean;
   completionPending: boolean;
@@ -940,7 +946,7 @@ function TaskRow({
   return (
     <div
       className={`gantt-row task-row${selected ? " is-selected" : ""}`}
-      style={{ height: TASK_HEIGHT }}
+      style={{ height: taskHeight }}
     >
       <div className="task-ledger">
         <button
@@ -1183,19 +1189,21 @@ function DependencyLayer({
   scale,
   timelineWidth,
   bodyHeight,
+  taskHeight,
   linkDrag,
 }: {
   rows: readonly GanttRow[];
   scale: ReturnType<typeof timelineScale>;
   timelineWidth: number;
   bodyHeight: number;
+  taskHeight: number;
   linkDrag: LinkDrag | null;
 }) {
   let offset = 0;
   const taskY = new Map<string, number>();
   const tasks = new Map<string, PlannerTask>();
   for (const row of rows) {
-    const height = row.kind === "group" ? GROUP_HEIGHT : TASK_HEIGHT;
+    const height = row.kind === "group" ? GROUP_HEIGHT : taskHeight;
     if (row.kind === "task") {
       taskY.set(row.task.id, offset + height / 2);
       tasks.set(row.task.id, row.task);
@@ -1311,6 +1319,15 @@ function scheduleValueLabel(value: string): string {
 function dependencyPath(x1: number, y1: number, x2: number, y2: number) {
   const bend = Math.max(14, Math.min(42, Math.abs(x2 - x1) / 2));
   return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+}
+
+function taskRowHeight(surface: HTMLElement): number {
+  const canvas = surface.querySelector<HTMLElement>(".gantt-canvas");
+  const value = canvas
+    ? getComputedStyle(canvas).getPropertyValue("--task-row-height")
+    : "";
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : TASK_HEIGHT;
 }
 
 function taskColumnWidth(surface: HTMLElement): number {
