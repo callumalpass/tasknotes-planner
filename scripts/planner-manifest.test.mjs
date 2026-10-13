@@ -26,6 +26,10 @@ describe("Planner mdbase manifest", () => {
           "definitions.manage",
         ],
       },
+      files: {
+        required: ["list", "read", "replace", "move"],
+        scope: { kind: "collection" },
+      },
     });
     expect(manifest.provisions.type_packs).toHaveLength(2);
     expect(manifest.provisions.type_packs[0].manifest.version).toBe(

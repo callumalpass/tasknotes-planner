@@ -43,6 +43,12 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
         required: [...requiredCapabilities],
       },
       access: "full_collection",
+      // Next accounts approve each record capability together with its file
+      // actions: reading needs list and read, editing needs replace and move.
+      files: {
+        required: ["list", "read", "replace", "move"],
+        scope: { kind: "collection" },
+      },
       configuration: [
         {
           id: "tasknotes-planner-base-sources",

@@ -87,8 +87,10 @@ deletion. These are atomic group meanings, not independently requested operation
 permissions. Setup assessment/application is handled by Connect's separate
 setup flow, with the existing provisions unchanged.
 
-No `records.create`, `records.delete`, `offline.replica`, `files.*`, or
-`background.schedule` is requested. Full-collection authorization remains
+No `records.create`, `records.delete`, `offline.replica`, or
+`background.schedule` is requested. Collection file actions `list`, `read`,
+`replace` and `move` are declared because next accounts approve
+`collection.read` and `records.edit` together with their matching file actions. Full-collection authorization remains
 necessary for Bases, while the application continues to select and mutate task
 records through `tasknotes.task` only. No app capability aliases or fabricated
 SDK groups were introduced; session state handling remains SDK-owned.

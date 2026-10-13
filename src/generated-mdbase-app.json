@@ -28,6 +28,10 @@
       ]
     },
     "access": "full_collection",
+    "files": {
+      "required": ["list", "read", "replace", "move"],
+      "scope": { "kind": "collection" }
+    },
     "configuration": [
       {
         "id": "tasknotes-planner-base-sources",
