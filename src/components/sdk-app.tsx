@@ -10,6 +10,7 @@ import "@mdbase-dev/ui/collections.css";
 import { DemoPlannerRepository } from "../data/demo-repository";
 import { NextPlannerRepository } from "../data/next-planner-repository";
 import { plannerMdbase } from "../data/sdk-application";
+import { useConnectionNotice } from "./connection-notice";
 import { Planner } from "./planner";
 import { useSampleMode } from "./use-sample-mode";
 
@@ -78,8 +79,10 @@ function ReadyPlanner({
     };
   }, [repository]);
   const { mdbase } = ui;
+  const connectionNotice = useConnectionNotice(mdbase);
   return (
     <Planner
+      connectionNotice={connectionNotice}
       repository={repository}
       onChangeCollection={async () => {
         await mdbase.chooseAnother();

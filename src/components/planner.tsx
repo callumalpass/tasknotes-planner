@@ -33,6 +33,10 @@ import {
   zoomDefinition,
   type TimelineZoom,
 } from "../domain/gantt";
+import {
+  connectionNoticeLabels,
+  type ConnectionNotice,
+} from "./connection-notice";
 import { GanttChart } from "./gantt-chart";
 import { TaskInspector } from "./task-inspector";
 import { useModalFocus } from "./use-modal-focus";
@@ -55,11 +59,14 @@ export function Planner({
   repository,
   onChangeCollection,
   collectionSwitcher,
+  connectionNotice = null,
 }: {
   repository: PlannerRepository;
   onChangeCollection(): void | Promise<void>;
   /** The shared mdbase collection switcher, in place of the collection button. */
   collectionSwitcher?: ReactNode;
+  /** The SDK's offline, reconnecting or saved-on-device state. */
+  connectionNotice?: ConnectionNotice | null;
 }) {
   const [collection, setCollection] = useState<PlannerCollection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +110,8 @@ export function Planner({
     ),
     () => repository.savedOnDevice?.() ?? false,
   );
+  const notice: ConnectionNotice | null =
+    connectionNotice ?? (savedOnDevice ? "saved_on_device" : null);
 
   const refreshPendingMutations = useCallback(() => {
     setPendingMutations(repository.pendingMutations?.() ?? []);
@@ -520,9 +529,9 @@ export function Planner({
           {collectionActionError}
         </p>
       ) : null}
-      {savedOnDevice ? (
+      {notice ? (
         <p className="planner-sync-status" role="status">
-          Saved on this device; waiting for sync
+          {connectionNoticeLabels[notice]}
         </p>
       ) : null}
       {pendingMutations.map((pending) => (
