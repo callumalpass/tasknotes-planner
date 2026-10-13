@@ -1,3 +1,4 @@
+import { CollectionSaveWarning } from "@mdbase-dev/ui/collections";
 import {
   CalendarDays,
   BookmarkPlus,
@@ -534,6 +535,7 @@ export function Planner({
           {connectionNoticeLabels[notice]}
         </p>
       ) : null}
+      <CollectionSaveWarning />
       {pendingMutations.map((pending) => (
         <aside className="planner-error" key={pending.requestId} role="status">
           A {pending.operation} may already have completed. Recover its original
