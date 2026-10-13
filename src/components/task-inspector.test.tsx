@@ -323,6 +323,39 @@ describe("TaskInspector", () => {
     ).toBeDisabled();
   });
 
+  it("flags an imported adjacent reverse range until the user fixes it", async () => {
+    const imported = { ...task, scheduled: "2026-08-18", due: "2026-08-17" };
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[imported]}
+        task={imported}
+        onClose={() => undefined}
+        onSave={onSave}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Due date must be on or after the scheduled date.",
+    );
+    const save = screen.getByRole("button", { name: "Save schedule" });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Due"), {
+      target: { value: "2026-08-19" },
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(imported, {
+        scheduled: "2026-08-18",
+        due: "2026-08-19",
+      }),
+    );
+  });
+
   it("adds a selected blocking relationship", async () => {
     const research: PlannerTask = {
       ...task,

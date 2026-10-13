@@ -1,5 +1,7 @@
 # Unreleased
 
+- Flag tasks scheduled after their due date in the ledger instead of displaying a reversed range. Their original dates remain available in the inspector, which also rejects adjacent reversed all-day dates.
+
 - Keep the inspector's status, priority and projects in sync when a task changes, including completion from its ledger row, without discarding unsaved date edits.
 
 - Wrap phone-sized ledger titles onto two lines so similar task names can be distinguished. Ledger rows, task bars and dependency lines remain aligned.

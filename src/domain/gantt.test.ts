@@ -3,6 +3,7 @@ import {
   canAddDependency,
   dependencyRelationship,
   groupTasks,
+  hasInvertedSchedule,
   replaceDatePart,
   replaceDateAndTime,
   resizedSchedule,
@@ -61,6 +62,27 @@ describe("taskSpan", () => {
       end: "2026-08-20",
       milestone: false,
     });
+  });
+});
+
+describe("hasInvertedSchedule", () => {
+  it.each([
+    { scheduled: "2026-11-02", due: "2026-10-29" },
+    { scheduled: "2026-10-30", due: "2026-10-29" },
+    { scheduled: "2026-10-29T12:00:00", due: "2026-10-29T11:00:00" },
+  ])("flags reversed planning bounds: %j", (input) => {
+    expect(hasInvertedSchedule(input)).toBe(true);
+  });
+  it.each([
+    {},
+    { due: "2026-10-29" },
+    { scheduled: "2026-10-29" },
+    { scheduled: "2026-10-29", due: "2026-10-30" },
+    { scheduled: "2026-10-29", due: "2026-10-29" },
+    { scheduled: "2026-10-29T23:59:00", due: "2026-10-29" },
+    { scheduled: "2026-10-29T12:00:00", due: "2026-10-29T12:00:00" },
+  ])("allows milestones and non-reversed bounds: %j", (input) => {
+    expect(hasInvertedSchedule(input)).toBe(false);
   });
 });
 

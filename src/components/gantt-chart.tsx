@@ -23,6 +23,7 @@ import {
   dateLabel,
   dependencyRelationship,
   groupTasks,
+  hasInvertedSchedule,
   minuteToPlanningValue,
   planningMinute,
   resolveDependencyTask,
@@ -911,6 +912,7 @@ function TaskRow({
   onCancelLink(): void;
 }) {
   const task = preview ? withSchedule(row.task, preview) : row.task;
+  const inverted = hasInvertedSchedule(task);
   const existingSpan = taskTimelineSpan(row.task, scale.snapMinutes);
   const span = taskTimelineSpan(task, scale.snapMinutes);
   const scaleStartMinute = planningMinute(scale.start)!;
@@ -977,9 +979,11 @@ function TaskRow({
         </button>
         <button
           aria-label={
-            !existingSpan && !mutationsDisabled
-              ? `${row.task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
-              : undefined
+            inverted
+              ? `${row.task.title}, ${scheduleLabel(task)}. Select to edit dates.`
+              : !existingSpan && !mutationsDisabled
+                ? `${row.task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
+                : undefined
           }
           className={`task-ledger-main${!existingSpan && !mutationsDisabled ? " is-placeable" : ""}`}
           type="button"
@@ -992,7 +996,12 @@ function TaskRow({
         >
           <span className="ledger-title">
             <strong>{row.task.title}</strong>
-            <small>{scheduleLabel(task)}</small>
+            <small
+              className={inverted ? "schedule-warning" : undefined}
+              title={inverted ? scheduleLabel(task) : undefined}
+            >
+              {inverted ? "Scheduled after due" : scheduleLabel(task)}
+            </small>
           </span>
           <span
             aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
@@ -1287,6 +1296,9 @@ function DependencyLayer({
 }
 
 function scheduleLabel(task: PlannerTask): string {
+  if (hasInvertedSchedule(task)) {
+    return `Scheduled ${scheduleValueLabel(task.scheduled!)}; due ${scheduleValueLabel(task.due!)}. Scheduled is after the due date`;
+  }
   const span = taskSpan(task);
   if (!span) return "Not scheduled";
   if (span.milestone) return `Due ${scheduleValueLabel(task.due!)}`;

@@ -111,6 +111,17 @@ export function datePart(value: string | undefined): string | undefined {
   return match?.[0];
 }
 
+export function hasInvertedSchedule(
+  task: Pick<PlannerTask, "scheduled" | "due">,
+): boolean {
+  const scheduled = planningMinute(task.scheduled, "start");
+  const due = planningMinute(task.due, "end");
+  if (scheduled === undefined || due === undefined) return false;
+  // An all-day end is drawn at the next midnight, but that next day is
+  // not a valid start for a task due on the preceding day.
+  return datePart(task.scheduled)! > datePart(task.due)! || scheduled > due;
+}
+
 export function taskSpan(task: PlannerTask): TaskSpan | null {
   const scheduled = datePart(task.scheduled);
   const due = datePart(task.due);

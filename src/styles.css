@@ -945,6 +945,10 @@ select:focus-visible {
   line-height: 15px;
 }
 
+.ledger-title .schedule-warning {
+  color: var(--danger);
+}
+
 .timeline-row {
   position: relative;
   border-bottom: 1px solid var(--line);

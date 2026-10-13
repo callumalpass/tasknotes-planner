@@ -14,7 +14,7 @@ import {
   canAddDependency,
   datePart,
   dependencyReferencesTask,
-  planningMinute,
+  hasInvertedSchedule,
   projectLabel,
   replaceDateAndTime,
   resolveDependencyTask,
@@ -92,12 +92,12 @@ export function TaskInspector({
     ? replaceDateAndTime(task.scheduled, scheduled, scheduledTime)
     : undefined;
   const dueValue = due ? replaceDateAndTime(task.due, due, dueTime) : undefined;
-  const validation =
-    scheduledValue &&
-    dueValue &&
-    planningMinute(scheduledValue, "start")! > planningMinute(dueValue, "end")!
-      ? "Due date must be on or after the scheduled date."
-      : "";
+  const validation = hasInvertedSchedule({
+    scheduled: scheduledValue,
+    due: dueValue,
+  })
+    ? "Due date must be on or after the scheduled date."
+    : "";
   const dependencyCandidates = useMemo(
     () =>
       allTasks.filter(

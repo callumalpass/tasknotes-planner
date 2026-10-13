@@ -87,6 +87,50 @@ describe("GanttChart interactions", () => {
     }
   });
 
+  it("flags imported reversed dates without presenting them as a valid range", () => {
+    const task = Object.freeze(
+      makeTask({
+        title: "Imported inversion",
+        scheduled: "2026-11-02",
+        due: "2026-10-29",
+      }),
+    );
+    const onSelect = vi.fn();
+    const onScheduleChange = vi.fn();
+    const view = render(
+      <GanttChart
+        allTasks={[task]}
+        tasks={[task]}
+        selectedId={null}
+        todayRequest={0}
+        zoom={3}
+        onSelect={onSelect}
+        onZoom={vi.fn()}
+        onScheduleChange={onScheduleChange}
+        onDependenciesChange={vi.fn()}
+        onCompletionChange={vi.fn()}
+      />,
+    );
+    const warning = screen.getByText("Scheduled after due");
+    expect(warning).toHaveAttribute(
+      "title",
+      "Scheduled Nov 2; due Oct 29. Scheduled is after the due date",
+    );
+    expect(screen.queryByText("Nov 2 — Oct 29")).not.toBeInTheDocument();
+    const ledger = view.container.querySelector(".task-ledger-main")!;
+    expect(ledger).toHaveAccessibleName(
+      /Imported inversion, Scheduled Nov 2; due Oct 29.*Scheduled is after the due date/,
+    );
+    expect(view.container.querySelector(".task-bar-main")).toHaveAccessibleName(
+      /Scheduled is after the due date/,
+    );
+    fireEvent.click(ledger);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
+    expect(task.scheduled).toBe("2026-11-02");
+    expect(task.due).toBe("2026-10-29");
+  });
+
   it("gates timeline writes while keeping task selection available", async () => {
     const task = makeTask({
       id: "blocked",
