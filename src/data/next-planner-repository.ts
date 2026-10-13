@@ -71,48 +71,7 @@ export class NextPlannerRepository implements PlannerRepository {
     const generation = this.generation;
     const description = await this.client.describe(signal);
     signal.throwIfAborted();
-    const contract = description.contracts.find(
-      (item) =>
-        item.id === "tasknotes.task" &&
-        item.version === TASKNOTES_SPEC_VERSION &&
-        item.digest === TASKNOTES_CONTRACT_DIGEST,
-    );
-    if (!contract)
-      throw new Error(
-        `This collection does not provide tasknotes.task ${TASKNOTES_SPEC_VERSION}.`,
-      );
-    const implementations = description.types.flatMap((type) => {
-      const matches = type.implements.filter(
-        (item) =>
-          item.contract === contract.id && item.version === contract.version,
-      );
-      if (matches.length > 1)
-        throw new Error(
-          `The type ${type.name} has ambiguous TaskNotes implementations.`,
-        );
-      return matches.map((implementation) => ({
-        typeName: type.name,
-        fields: Object.fromEntries(implementation.fields),
-        binding:
-          implementation.binding === undefined
-            ? {}
-            : toPlain(implementation.binding),
-      }));
-    });
-    if (!implementations.length)
-      throw new Error("The TaskNotes contract has no implementing types.");
-    // Native update.patch is top-level; do not silently write a dotted literal
-    // where the contract actually declares a nested field reference.
-    for (const implementation of implementations)
-      if (
-        Object.values(implementation.fields).some(
-          (field) => field.includes(".") || field.includes("["),
-        )
-      )
-        throw new Error(
-          "This TaskNotes binding needs nested-field support in the shared SDK.",
-        );
-    const configurations = taskTypeConfigurations({ implementations });
+    const configurations = configurationsFromDescription(description);
     const views = await this.views.list(signal);
     signal.throwIfAborted();
     const activeView = views.find((view) => view.key === viewKey);
@@ -219,6 +178,7 @@ export class NextPlannerRepository implements PlannerRepository {
       throw new Error(
         "Complete recurring tasks in TaskNotes, where you can choose an occurrence.",
       );
+    await this.revalidateConfigurations(this.signal());
     const config = this.configuration(item);
     const completedStatus = getDefaultCompletedStatus(
       modelStatuses(config.statuses),
@@ -304,6 +264,26 @@ export class NextPlannerRepository implements PlannerRepository {
     return config;
   }
 
+  /** Record notifications invalidate the snapshot, not necessarily its bindings.
+   * Re-read the catalog before a second edit rather than asking users to reload
+   * and discard their date drafts. Actual binding changes still require reload. */
+  private async revalidateConfigurations(signal: AbortSignal): Promise<void> {
+    await this.observe(signal);
+    if (this.configurationGeneration === this.generation) return;
+    const generation = this.generation;
+    const previous = this.configurations;
+    const description = await this.client.describe(signal);
+    signal.throwIfAborted();
+    const configurations = configurationsFromDescription(description);
+    if (generation !== this.generation) throw changed();
+    if (
+      configurationSignature(previous) !==
+      configurationSignature(configurations)
+    )
+      throw new Error("The collection changed. Reload Planner before editing.");
+    this.configurationGeneration = generation;
+  }
+
   private async update(
     item: PlannerTask,
     patch: (
@@ -312,6 +292,7 @@ export class NextPlannerRepository implements PlannerRepository {
     ) => JsonObject,
   ): Promise<PlannerTask> {
     const signal = this.signal();
+    await this.revalidateConfigurations(signal);
     const config = this.configuration(item);
     const configurations = this.configurations;
     const generation = this.generation;
@@ -435,6 +416,73 @@ export class NextPlannerRepository implements PlannerRepository {
     this.generation++;
     for (const listener of this.listeners) listener();
   }
+}
+
+function configurationsFromDescription(
+  description: wire.DescribeResult,
+): Map<string, TaskTypeConfiguration> {
+  const contract = description.contracts.find(
+    (item) =>
+      item.id === "tasknotes.task" &&
+      item.version === TASKNOTES_SPEC_VERSION &&
+      item.digest === TASKNOTES_CONTRACT_DIGEST,
+  );
+  if (!contract)
+    throw new Error(
+      `This collection does not provide tasknotes.task ${TASKNOTES_SPEC_VERSION}.`,
+    );
+  const implementations = description.types.flatMap((type) => {
+    const matches = type.implements.filter(
+      (item) =>
+        item.contract === contract.id && item.version === contract.version,
+    );
+    if (matches.length > 1)
+      throw new Error(
+        `The type ${type.name} has ambiguous TaskNotes implementations.`,
+      );
+    return matches.map((implementation) => ({
+      typeName: type.name,
+      fields: Object.fromEntries(implementation.fields),
+      binding:
+        implementation.binding === undefined
+          ? {}
+          : toPlain(implementation.binding),
+    }));
+  });
+  if (!implementations.length)
+    throw new Error("The TaskNotes contract has no implementing types.");
+  // Native update.patch is top-level; do not silently write a dotted literal
+  // where the contract actually declares a nested field reference.
+  for (const implementation of implementations)
+    if (
+      Object.values(implementation.fields).some(
+        (field) => field.includes(".") || field.includes("["),
+      )
+    )
+      throw new Error(
+        "This TaskNotes binding needs nested-field support in the shared SDK.",
+      );
+  return taskTypeConfigurations({ implementations });
+}
+
+function configurationSignature(
+  configurations: ReadonlyMap<string, TaskTypeConfiguration>,
+): string {
+  return JSON.stringify(
+    [...configurations]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, config]) => [
+        name,
+        {
+          ...config,
+          fields: Object.fromEntries(
+            Object.entries(config.fields).sort(([a], [b]) =>
+              a.localeCompare(b),
+            ),
+          ),
+        },
+      ]),
+  );
 }
 
 function canonical(

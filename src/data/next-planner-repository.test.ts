@@ -112,7 +112,10 @@ async function fixture(options: { pending?: boolean } = {}) {
               },
               priority: {
                 default: "normal",
-                definitions: [{ value: "normal", label: "Normal", weight: 1 }],
+                definitions: [
+                  { value: "normal", label: "Normal", weight: 1 },
+                  { value: "high", label: "High", weight: 2 },
+                ],
               },
             }),
           },
@@ -130,6 +133,16 @@ async function fixture(options: { pending?: boolean } = {}) {
   const repo = new NextPlannerRepository(client, "Work", views);
   repositories.push(repo);
   return { replica, client, record, catalog, views, repo };
+}
+
+async function prioritizedFixture() {
+  const f = await fixture();
+  const [item] = (await f.repo.load()).tasks;
+  const changed = vi.fn();
+  await f.repo.watch(changed);
+  const prioritized = await f.repo.updateProperties(item, { priority: "high" });
+  await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+  return { ...f, prioritized, changed };
 }
 
 describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
@@ -218,6 +231,105 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
     const stored = await f.client.get(f.record.id, { effective: true });
     expect(stored.frontmatter.get("starts")).toBe("2026-10-10");
     expect(stored.frontmatter.get("ends")).toBe("2026-10-12");
+  });
+
+  it("saves date drafts immediately after a confirmed priority change without a full reload", async () => {
+    const f = await fixture();
+    const [item] = (await f.repo.load()).tasks;
+    const changed = vi.fn();
+    await f.repo.watch(changed);
+    const prioritized = await f.repo.updateProperties(item, {
+      priority: "high",
+    });
+    await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+    const saved = await f.repo.updateSchedule(prioritized, {
+      scheduled: "2026-10-27",
+      due: "2026-10-29",
+    });
+    expect(saved).toMatchObject({
+      priority: "high",
+      scheduled: "2026-10-27",
+      due: "2026-10-29",
+    });
+    expect(f.client.describe).toHaveBeenCalledTimes(2);
+  });
+
+  it("revalidates semantically identical bindings with reordered field entries", async () => {
+    const f = await prioritizedFixture();
+    f.catalog.types[0].implements[0].fields = new Map(
+      [...f.catalog.types[0].implements[0].fields].reverse(),
+    );
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).resolves.toMatchObject({ due: "2026-10-29" });
+  });
+
+  it("refuses a changed binding after a record notification before submitting a write", async () => {
+    const f = await prioritizedFixture();
+    f.catalog.types[0].implements[0].fields.set("due", "new_deadline");
+    const update = vi.spyOn(f.client, "update");
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).rejects.toThrow("Reload Planner");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an incompatible contract during revalidation", async () => {
+    const f = await prioritizedFixture();
+    f.catalog.contracts[0].digest = "different";
+    const update = vi.spyOn(f.client, "update");
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).rejects.toThrow("does not provide");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the generation fence when another notification arrives during revalidation", async () => {
+    const f = await prioritizedFixture();
+    const update = vi.spyOn(f.client, "update");
+    vi.mocked(f.client.describe).mockImplementation(async () => {
+      f.changed.mockClear();
+      const record = await f.client.get(f.record.id, { effective: true });
+      await f.client.save(
+        f.client.update(record, {
+          patch: { headline: "Changed during catalog read" },
+          ifRevision: record.revision,
+        }),
+      );
+      await vi.waitFor(() => expect(f.changed).toHaveBeenCalled());
+      return f.catalog;
+    });
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).rejects.toThrow("changed while loading");
+    expect(update).toHaveBeenCalledTimes(1); // Only the injected concurrent edit.
+  });
+
+  it("does not submit a late revalidation after repository disposal", async () => {
+    const f = await prioritizedFixture();
+    const update = vi.spyOn(f.client, "update");
+    vi.mocked(f.client.describe).mockImplementation(async () => {
+      f.repo.dispose();
+      return f.catalog;
+    });
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("still refuses protected records after successful catalog revalidation", async () => {
+    const f = await prioritizedFixture();
+    const record = await f.client.get(f.record.id, { effective: true });
+    vi.spyOn(f.client, "get").mockResolvedValue({
+      ...record,
+      state: { ...record.state, unresolved: 1 },
+    });
+    const update = vi.spyOn(f.client, "update");
+    await expect(
+      f.repo.updateSchedule(f.prioritized, { due: "2026-10-29" }),
+    ).rejects.toThrow("protected edit");
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("keeps editing while writes are saved on this device, and lists a later refusal", async () => {
