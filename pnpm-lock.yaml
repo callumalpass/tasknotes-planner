@@ -21,11 +21,11 @@ importers:
         specifier: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
         version: file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz
       "@mdbase-dev/sdk":
-        specifier: file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz
-        version: file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz
+        specifier: file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz
+        version: file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz
       "@mdbase-dev/ui":
         specifier: file:vendor/ui-dev-9553ad66.tgz
-        version: file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       "@tasknotes/model":
         specifier: file:vendor/tasknotes-model-0.3.0-rc.15.tgz
         version: file:vendor/tasknotes-model-0.3.0-rc.15.tgz
@@ -510,11 +510,11 @@ packages:
       }
     version: 0.1.0-beta.96
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz":
     resolution:
       {
-        integrity: sha512-YvwUr8WqTPeJmi9Fz+W54wy2E89fRSpklX99aJjUfkck04EPqdWNZAtB7FJY9BOD6CmzHOgG5aYQ/QEPbLafpA==,
-        tarball: file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz,
+        integrity: sha512-nuVkGiydDqZDxnRBjHsiUCmfLHJtmMws/2iBhJBE4mU3WorbDpTZOydcIony8VTbEJxc1nXRBvuZ1i4++0K2MQ==,
+        tarball: file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz,
       }
     version: 0.0.0
     engines: { node: ">=20" }
@@ -2605,19 +2605,19 @@ snapshots:
     dependencies:
       "@mdbase-dev/connect-protocol": file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz
 
-  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz":
+  "@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz":
     dependencies:
       "@noble/ciphers": 2.4.0
       "@noble/curves": 2.4.0
       "@noble/hashes": 2.4.0
 
-  "@mdbase-dev/ui@file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)":
+  "@mdbase-dev/ui@file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)":
     dependencies:
       "@fontsource-variable/atkinson-hyperlegible-next": 5.3.0
       "@fontsource/azeret-mono": 5.3.0
       react: 19.2.8
     optionalDependencies:
-      "@mdbase-dev/sdk": file:vendor/mdbase-dev-sdk-dev-f1aa67e3.tgz
+      "@mdbase-dev/sdk": file:vendor/mdbase-dev-sdk-dev-bef3fe45.tgz
       react-dom: 19.2.8(react@19.2.8)
 
   "@napi-rs/wasm-runtime@1.2.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)":
