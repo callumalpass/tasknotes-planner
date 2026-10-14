@@ -41,22 +41,24 @@ describe("Private collection consent popup return", () => {
     expect(deliverAppGrantCallback).toHaveBeenCalledWith(callback);
   });
 
-  it("in LAB, delivers and closes without starting the SDK entry", async () => {
+  it("in LAB, delivers without self-closing or starting another SDK entry", async () => {
     const deliver = vi.fn(async () => {});
-    const close = vi.fn();
-    render(<>{pageFor(callback, "lab", close, deliver)}</>);
+    const close = vi.spyOn(window,"close");
+    render(<>{pageFor(callback, "lab", deliver)}</>);
     expect(screen.getByText("You can close this window.")).toBeTruthy();
     expect(deliver).toHaveBeenCalledWith(callback);
-    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    await new Promise(resolve=>setTimeout(resolve,0));
+    expect(close).not.toHaveBeenCalled();
     expect(sdk.plannerMdbase).not.toHaveBeenCalled();
+    close.mockRestore();
   });
 
   it("renders the app for any other page, and leaves Connect's callback to Connect", () => {
     const deliver = vi.fn(async () => {});
     render(
       <>
-        {pageFor("http://127.0.0.1:48221/", "lab", vi.fn(), deliver)}
-        {pageFor(callback, "production", vi.fn(), deliver)}
+        {pageFor("http://127.0.0.1:48221/", "lab", deliver)}
+        {pageFor(callback, "production", deliver)}
       </>,
     );
     expect(screen.getAllByText("planner")).toHaveLength(2);

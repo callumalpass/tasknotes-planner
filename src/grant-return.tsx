@@ -32,17 +32,15 @@ export async function deliverAppGrantReturn(
 }
 
 /** What the page renders. In LAB builds (the SDK entry) a consent popup return
- * delivers its result and closes, without starting a second SDK entry here.
+ * delivers its result without starting a second SDK entry. The original SDK
+ * owns close only after Native finish and original custody ACK.
  * Other builds keep Connect, which owns its own callback on the same route. */
 export function pageFor(
   href: string,
   environment: string | undefined,
-  closeWindow: () => void = () => window.close(),
   deliver: (href: string) => Promise<void> = deliverAppGrantReturn,
 ): ReactNode {
   if (environment !== "lab" || !isAppGrantCallback(href)) return <Root />;
-  void deliver(href)
-    .catch(() => {})
-    .finally(closeWindow);
+  void deliver(href).catch(() => {});
   return <p className="grant-return">You can close this window.</p>;
 }
