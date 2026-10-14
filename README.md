@@ -38,7 +38,10 @@ Planner discovers Obsidian Bases views with `type: tasknotesPlanner`. Selecting
 one executes its standard Base filters and ordering through mdbase. Saving a
 view creates or updates a source under `TaskNotes/Views/`, with the current
 project, status, priority, completed-task preference, and zoom stored in the
-view. TaskNotes can show the same filtered result as a compact list and hand it
+view. The normal collection setup declares `md` and `base` in
+`settings.record_extensions`, preserving Markdown and existing extensions: the
+canonical `obsidian.base` type requires YAML document records, not opaque files.
+TaskNotes can show the same filtered result as a compact list and hand it
 off to Planner for timeline work.
 
 ## Timeline interactions

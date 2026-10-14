@@ -56,6 +56,20 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
           predicate: "contains",
           value: "TaskNotes/Views/**/*.base",
         },
+        // The canonical obsidian.base type stores YAML document records.
+        // record_extensions is a complete set: retain Markdown explicitly.
+        {
+          id: "tasknotes-planner-markdown-records",
+          path: "/settings/record_extensions",
+          predicate: "contains",
+          value: "md",
+        },
+        {
+          id: "tasknotes-planner-base-records",
+          path: "/settings/record_extensions",
+          predicate: "contains",
+          value: "base",
+        },
       ],
     },
     provisions: {
@@ -66,6 +80,18 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
           operation: "set_add",
           path: "/x-obsidian/bases/include",
           value: "TaskNotes/Views/**/*.base",
+        },
+        {
+          requirement: "tasknotes-planner-markdown-records",
+          operation: "set_add",
+          path: "/settings/record_extensions",
+          value: "md",
+        },
+        {
+          requirement: "tasknotes-planner-base-records",
+          operation: "set_add",
+          path: "/settings/record_extensions",
+          value: "base",
         },
       ],
     },

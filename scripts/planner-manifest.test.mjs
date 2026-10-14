@@ -63,11 +63,47 @@ describe("Planner mdbase manifest", () => {
       manifest: { id: "obsidian.base", version: "1.0.0" },
       provides: [manifest.requirements.contracts[1]],
     });
+    expect(manifest.requirements.configuration).toEqual([
+      {
+        id: "tasknotes-planner-base-sources",
+        path: "/x-obsidian/bases/include",
+        predicate: "contains",
+        value: "TaskNotes/Views/**/*.base",
+      },
+      {
+        id: "tasknotes-planner-markdown-records",
+        path: "/settings/record_extensions",
+        predicate: "contains",
+        value: "md",
+      },
+      {
+        id: "tasknotes-planner-base-records",
+        path: "/settings/record_extensions",
+        predicate: "contains",
+        value: "base",
+      },
+    ]);
+    // Fresh collections default to Markdown: Bases must be declared as record
+    // extensions, not uploaded as opaque files. Preserve Markdown explicitly.
     expect(manifest.provisions.configuration).toEqual([
-      expect.objectContaining({
+      {
         requirement: "tasknotes-planner-base-sources",
         operation: "set_add",
-      }),
+        path: "/x-obsidian/bases/include",
+        value: "TaskNotes/Views/**/*.base",
+      },
+      {
+        requirement: "tasknotes-planner-markdown-records",
+        operation: "set_add",
+        path: "/settings/record_extensions",
+        value: "md",
+      },
+      {
+        requirement: "tasknotes-planner-base-records",
+        operation: "set_add",
+        path: "/settings/record_extensions",
+        value: "base",
+      },
     ]);
   });
 
