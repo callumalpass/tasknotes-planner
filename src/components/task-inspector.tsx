@@ -7,13 +7,14 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useConfirmedDraft } from "./use-confirmed-draft";
 
 import {
   addOrReplaceDependency,
   canAddDependency,
   datePart,
   dependencyReferencesTask,
-  planningMinute,
+  hasInvertedSchedule,
   projectLabel,
   replaceDateAndTime,
   resolveDependencyTask,
@@ -64,9 +65,16 @@ export function TaskInspector({
     useState<TaskDependencyRelType>("FINISHTOSTART");
   const [scheduleError, setScheduleError] = useState("");
   const [dependencyError, setDependencyError] = useState("");
-  const [status, setStatus] = useState(task.status);
-  const [priority, setPriority] = useState(task.priority);
-  const [projects, setProjects] = useState(task.projects);
+  const [status, setStatus, resetStatus] = useConfirmedDraft(task.status);
+  const [priority, setPriority, resetPriority] = useConfirmedDraft(
+    task.priority,
+  );
+  const [projects, setProjects, resetProjects] = useConfirmedDraft(
+    task.projects,
+    (left, right) =>
+      left.length === right.length &&
+      left.every((project, index) => project === right[index]),
+  );
   const [propertySaving, setPropertySaving] = useState(false);
   const [propertyError, setPropertyError] = useState("");
 
@@ -84,12 +92,12 @@ export function TaskInspector({
     ? replaceDateAndTime(task.scheduled, scheduled, scheduledTime)
     : undefined;
   const dueValue = due ? replaceDateAndTime(task.due, due, dueTime) : undefined;
-  const validation =
-    scheduledValue &&
-    dueValue &&
-    planningMinute(scheduledValue, "start")! > planningMinute(dueValue, "end")!
-      ? "Due date must be on or after the scheduled date."
-      : "";
+  const validation = hasInvertedSchedule({
+    scheduled: scheduledValue,
+    due: dueValue,
+  })
+    ? "Due date must be on or after the scheduled date."
+    : "";
   const dependencyCandidates = useMemo(
     () =>
       allTasks.filter(
@@ -171,9 +179,9 @@ export function TaskInspector({
       await onSaveProperties(task, update);
     } catch (reason) {
       if (!isOperationOutcomeUnknown(reason)) {
-        setStatus(task.status);
-        setPriority(task.priority);
-        setProjects(task.projects);
+        resetStatus();
+        resetPriority();
+        resetProjects();
       }
       setPropertyError(errorMessage(reason));
     } finally {

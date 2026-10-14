@@ -4,7 +4,11 @@ import {
   type ConnectProblem,
 } from "@mdbase-dev/connect";
 
-import { isOperationOutcomeUnknown, requireOutcome } from "./outcome";
+import {
+  errorMessage,
+  isOperationOutcomeUnknown,
+  requireOutcome,
+} from "./outcome";
 
 describe("Connect outcomes", () => {
   it("preserves structured unknown mutation outcomes", () => {
@@ -32,5 +36,21 @@ describe("Connect outcomes", () => {
     expect(thrown).toBeInstanceOf(MdbaseConnectError);
     expect((thrown as MdbaseConnectError).problem).toBe(problem);
     expect(isOperationOutcomeUnknown(thrown)).toBe(true);
+  });
+
+  it("shows person-facing copy, not replica text, for coded mdbase problems", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reason = Object.assign(
+      new Error("complete bounded raw record inventory is unavailable"),
+      { code: "unavailable", reason: "view_metadata_unavailable" },
+    );
+    const message = errorMessage(reason);
+    expect(message).not.toContain("inventory");
+    expect(message.length).toBeGreaterThan(0);
+    expect(warn).toHaveBeenCalled();
+    expect(errorMessage(new Error("Title is required"))).toBe(
+      "Title is required",
+    );
+    warn.mockRestore();
   });
 });

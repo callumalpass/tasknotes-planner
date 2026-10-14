@@ -2,11 +2,8 @@ import {
   type CollectionContractDescriptor,
   type JsonObject,
   type MdbaseConnection,
-  type QueryRecord,
-  type RecordDocument,
   type SavedNamedView,
   type SavedViewDocument,
-  type SavedViewExecution,
 } from "@mdbase-dev/connect";
 import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 import {
@@ -51,7 +48,7 @@ const contract = {
 const PLANNER_VIEW_TYPE = "tasknotesPlanner";
 const PLANNER_VIEW_FOLDER = "TaskNotes/Views";
 
-interface TaskTypeConfiguration {
+export interface TaskTypeConfiguration {
   typeName: string;
   fields: Record<string, string>;
   statuses: PlannerStatusOption[];
@@ -338,55 +335,66 @@ export class MdbasePlannerRepository implements PlannerRepository {
     };
   }
 
-  private taskFromRecord(
-    record:
-      | QueryRecord<JsonObject>
-      | RecordDocument<JsonObject>
-      | SavedViewExecution<JsonObject>["results"][number],
-  ): PlannerTask {
-    const raw = record.effectiveFrontmatter ?? record.frontmatter ?? {};
-    const providerType =
-      record.contract?.type ??
-      record.types.find((type) => this.taskTypes.has(type));
-    const configuration = providerType
-      ? this.taskTypes.get(providerType)
-      : undefined;
-    if (!configuration)
-      throw new Error(`No TaskNotes binding was found for ${record.path}.`);
-    const values = record.contract
-      ? raw
-      : canonicalValues(raw, configuration.fields);
-    const title = stringValue(values.title) ?? basename(record.path);
-    const status = stringValue(values.status) ?? configuration.defaultStatus;
-    const priority =
-      stringValue(values.priority) ?? configuration.defaultPriority;
-    const statusDefinition = configuration.statuses.find(
-      ({ value }) => value === status,
-    );
-    const priorityDefinition = configuration.priorities.find(
-      ({ value }) => value === priority,
-    );
-    return {
-      id: stringValue(values.id) ?? record.path,
-      path: record.path,
-      title,
-      status,
-      priority,
-      scheduled: stringValue(values.scheduled),
-      due: stringValue(values.due),
-      projects: stringList(values.projects),
-      blockedBy: normalizeDependencyList(values.blockedBy) ?? [],
-      completed: statusDefinition?.isCompleted ?? false,
-      recurrence: stringValue(values.recurrence),
-      providerType,
-      statusLabel: statusDefinition?.label ?? status,
-      statusColor: statusDefinition?.color ?? "#64748b",
-      priorityLabel: priorityDefinition?.label ?? priority,
-      priorityColor: priorityDefinition?.color ?? "#64748b",
-      statusOptions: configuration.statuses,
-      priorityOptions: configuration.priorities,
-    };
+  private taskFromRecord(record: PlannerRecord): PlannerTask {
+    return plannerTaskFromRecord(record, this.taskTypes);
   }
+}
+
+export interface PlannerRecord {
+  path: string;
+  types: readonly string[];
+  frontmatter?: JsonObject;
+  effectiveFrontmatter?: JsonObject;
+  contract?: { type: string };
+}
+
+/** Shared portable task mapping; native SDK callers supply unprojected fields. */
+export function plannerTaskFromRecord(
+  record: PlannerRecord,
+  configurations: ReadonlyMap<string, TaskTypeConfiguration>,
+): PlannerTask {
+  const raw = record.effectiveFrontmatter ?? record.frontmatter ?? {};
+  const providerType =
+    record.contract?.type ??
+    record.types.find((type) => configurations.has(type));
+  const configuration = providerType
+    ? configurations.get(providerType)
+    : undefined;
+  if (!configuration)
+    throw new Error(`No TaskNotes binding was found for ${record.path}.`);
+  const values = record.contract
+    ? raw
+    : canonicalValues(raw, configuration.fields);
+  const title = stringValue(values.title) ?? basename(record.path);
+  const status = stringValue(values.status) ?? configuration.defaultStatus;
+  const priority =
+    stringValue(values.priority) ?? configuration.defaultPriority;
+  const statusDefinition = configuration.statuses.find(
+    ({ value }) => value === status,
+  );
+  const priorityDefinition = configuration.priorities.find(
+    ({ value }) => value === priority,
+  );
+  return {
+    id: stringValue(values.id) ?? record.path,
+    path: record.path,
+    title,
+    status,
+    priority,
+    scheduled: stringValue(values.scheduled),
+    due: stringValue(values.due),
+    projects: stringList(values.projects),
+    blockedBy: normalizeDependencyList(values.blockedBy) ?? [],
+    completed: statusDefinition?.isCompleted ?? false,
+    recurrence: stringValue(values.recurrence),
+    providerType,
+    statusLabel: statusDefinition?.label ?? status,
+    statusColor: statusDefinition?.color ?? "#64748b",
+    priorityLabel: priorityDefinition?.label ?? priority,
+    priorityColor: priorityDefinition?.color ?? "#64748b",
+    statusOptions: configuration.statuses,
+    priorityOptions: configuration.priorities,
+  };
 }
 
 function requireTaskNotesContract(
@@ -405,9 +413,13 @@ function requireTaskNotesContract(
   return descriptor;
 }
 
-function taskTypeConfigurations(
-  descriptor: CollectionContractDescriptor,
-): Map<string, TaskTypeConfiguration> {
+export function taskTypeConfigurations(descriptor: {
+  implementations: readonly {
+    typeName: string;
+    fields: Record<string, string>;
+    binding?: unknown;
+  }[];
+}): Map<string, TaskTypeConfiguration> {
   return new Map(
     descriptor.implementations.map((implementation) => {
       const binding = recordValue(implementation.binding);
@@ -460,7 +472,9 @@ function taskTypeConfigurations(
   );
 }
 
-function plannerViews(documents: readonly SavedViewDocument[]): PlannerView[] {
+export function plannerViews(
+  documents: readonly SavedViewDocument[],
+): PlannerView[] {
   return documents.flatMap((document) =>
     document.views.flatMap((view) =>
       isPlannerPresentation(view)
@@ -511,7 +525,7 @@ function plannerOptions(value: unknown): PlannerViewOptions {
   };
 }
 
-function plannerViewDefinition(
+export function plannerViewDefinition(
   name: string,
   input: SavePlannerViewInput,
   taskTypes: Iterable<TaskTypeConfiguration>,
@@ -583,7 +597,7 @@ function plannerFilters(
   return groups.length === 1 ? groups[0] : { or: groups };
 }
 
-function viewFromDefinition(
+export function viewFromDefinition(
   path: string,
   format: string,
   revision: string,
@@ -604,7 +618,7 @@ function viewFromDefinition(
   };
 }
 
-function aggregateStatuses(
+export function aggregateStatuses(
   configurations: Iterable<TaskTypeConfiguration>,
 ): PlannerStatusOption[] {
   const values = new Map<string, PlannerStatusOption>();
@@ -617,7 +631,7 @@ function aggregateStatuses(
   );
 }
 
-function aggregatePriorities(
+export function aggregatePriorities(
   configurations: Iterable<TaskTypeConfiguration>,
 ): PlannerPriorityOption[] {
   const values = new Map<string, PlannerPriorityOption>();
@@ -630,7 +644,7 @@ function aggregatePriorities(
   );
 }
 
-function modelStatuses(
+export function modelStatuses(
   options: readonly PlannerStatusOption[],
 ): StatusConfig[] {
   return options.map((option) => ({
@@ -658,7 +672,7 @@ function canonicalValues(
   ) as JsonObject;
 }
 
-function plannerViewSourcePath(name: string): string {
+export function plannerViewSourcePath(name: string): string {
   return `${PLANNER_VIEW_FOLDER}/${slug(name) || "planner"}.base`;
 }
 
@@ -672,7 +686,7 @@ function slug(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function stableIds(names: string[]): string[] {
+export function stableIds(names: string[]): string[] {
   const seen = new Map<string, number>();
   return names.map((name) => {
     const base = identifier(name, "view");

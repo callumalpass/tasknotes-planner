@@ -23,6 +23,7 @@ import {
   dateLabel,
   dependencyRelationship,
   groupTasks,
+  hasInvertedSchedule,
   minuteToPlanningValue,
   planningMinute,
   resolveDependencyTask,
@@ -57,6 +58,7 @@ interface ScheduleDrag {
   timelineLeft: number;
   update: ScheduleUpdate;
   changed: boolean;
+  validPlacement: boolean;
 }
 
 interface SchedulePreview {
@@ -129,6 +131,7 @@ export function GanttChart({
     () => new Set(),
   );
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
+  const [taskHeight, setTaskHeight] = useState(TASK_HEIGHT);
   const today = dateFromDate(new Date());
   const now = new Date();
   const scale = useMemo(
@@ -140,7 +143,7 @@ export function GanttChart({
   const timelineWidth = scale.days.length * scale.cellWidth;
   const bodyHeight = rows.reduce(
     (height, row) =>
-      height + (row.kind === "group" ? GROUP_HEIGHT : TASK_HEIGHT),
+      height + (row.kind === "group" ? GROUP_HEIGHT : taskHeight),
     0,
   );
   const scaleStartMinute = planningMinute(scale.start)!;
@@ -158,6 +161,7 @@ export function GanttChart({
     if (!surface) return;
     const updateWidth = () => {
       const width = Math.max(0, surface.clientWidth - taskColumnWidth(surface));
+      setTaskHeight(taskRowHeight(surface));
       setTimelineViewportWidth((current) =>
         Math.abs(current - width) < 1 ? current : width,
       );
@@ -167,7 +171,7 @@ export function GanttChart({
     const observer = new ResizeObserver(updateWidth);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, []);
+  }, [rows.length]);
 
   useLayoutEffect(() => {
     const surface = scroller.current;
@@ -321,7 +325,9 @@ export function GanttChart({
     kind: ScheduleDragKind,
   ) {
     if (event.button !== 0) return;
-    const timeline = event.currentTarget.closest<HTMLElement>(".timeline-row");
+    const timeline = event.currentTarget
+      .closest<HTMLElement>(".gantt-row")
+      ?.querySelector<HTMLElement>(".timeline-row");
     if (!timeline) return;
     event.preventDefault();
     event.stopPropagation();
@@ -333,13 +339,14 @@ export function GanttChart({
       timelineLeft: timeline.getBoundingClientRect().left,
       update: { scheduled: task.scheduled, due: task.due },
       changed: false,
+      validPlacement: false,
     };
     window.addEventListener("pointermove", moveWindowScheduleDrag);
     window.addEventListener("pointerup", endWindowScheduleDrag);
     window.addEventListener("pointercancel", cancelWindowScheduleDrag);
   }
 
-  function moveScheduleDrag(event: { clientX: number }) {
+  function moveScheduleDrag(event: { clientX: number; clientY?: number }) {
     const current = scheduleDrag.current;
     if (!current) return;
     const rawDelta =
@@ -351,9 +358,28 @@ export function GanttChart({
     const delta = Math.round(rawDelta / step) * step;
     const moved = Math.abs(event.clientX - current.originClientX) >= 4;
     let update = current.update;
+    let validPlacement = current.validPlacement;
     if (current.kind === "move")
       update = shiftedScheduleByMinutes(current.task, delta);
     else if (current.kind === "place") {
+      const surface = scroller.current;
+      const bounds = surface?.getBoundingClientRect();
+      const left =
+        bounds?.width && surface
+          ? Math.max(
+              current.timelineLeft,
+              bounds.left + taskColumnWidth(surface),
+            )
+          : current.timelineLeft;
+      const right = bounds?.width
+        ? Math.min(current.timelineLeft + timelineWidth, bounds.right)
+        : current.timelineLeft + timelineWidth;
+      validPlacement =
+        event.clientX >= left &&
+        event.clientX < right &&
+        (event.clientY === undefined ||
+          !bounds?.height ||
+          (event.clientY >= bounds.top && event.clientY <= bounds.bottom));
       const offset = Math.max(
         0,
         Math.min(
@@ -380,8 +406,19 @@ export function GanttChart({
         update = resizedScheduleAt(current.task, edge, origin + delta, step);
       }
     }
-    scheduleDrag.current = { ...current, update, changed: moved };
-    if (moved) setSchedulePreview({ taskId: current.task.id, update });
+    scheduleDrag.current = {
+      ...current,
+      update,
+      changed: moved,
+      validPlacement,
+    };
+    if (moved) {
+      setSchedulePreview(
+        current.kind !== "place" || validPlacement
+          ? { taskId: current.task.id, update }
+          : null,
+      );
+    }
   }
 
   function endScheduleDrag() {
@@ -395,6 +432,16 @@ export function GanttChart({
     window.setTimeout(() => {
       suppressClick.current = false;
     }, 0);
+    if (current.kind === "place" && !current.validPlacement) {
+      showMessage(
+        {
+          tone: "neutral",
+          text: "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+        },
+        4_500,
+      );
+      return;
+    }
     void commitSchedule(current.task, current.update);
   }
 
@@ -617,6 +664,7 @@ export function GanttChart({
                   selected={selectedId === row.task.id}
                   completionPending={completionPending.has(row.task.id)}
                   suppressClickRef={suppressClick}
+                  taskHeight={taskHeight}
                   timelineWidth={timelineWidth}
                   onBeginLink={beginLink}
                   onCompletionChange={commitCompletion}
@@ -634,6 +682,7 @@ export function GanttChart({
             )}
             <DependencyLayer
               bodyHeight={bodyHeight}
+              taskHeight={taskHeight}
               linkDrag={linkDrag}
               rows={rows}
               scale={scale}
@@ -808,6 +857,7 @@ function GroupRow({
 function TaskRow({
   row,
   timelineWidth,
+  taskHeight,
   scale,
   selected,
   completionPending,
@@ -829,6 +879,7 @@ function TaskRow({
 }: {
   row: Extract<GanttRow, { kind: "task" }>;
   timelineWidth: number;
+  taskHeight: number;
   scale: ReturnType<typeof timelineScale>;
   selected: boolean;
   completionPending: boolean;
@@ -861,6 +912,7 @@ function TaskRow({
   onCancelLink(): void;
 }) {
   const task = preview ? withSchedule(row.task, preview) : row.task;
+  const inverted = hasInvertedSchedule(task);
   const existingSpan = taskTimelineSpan(row.task, scale.snapMinutes);
   const span = taskTimelineSpan(task, scale.snapMinutes);
   const scaleStartMinute = planningMinute(scale.start)!;
@@ -896,7 +948,7 @@ function TaskRow({
   return (
     <div
       className={`gantt-row task-row${selected ? " is-selected" : ""}`}
-      style={{ height: TASK_HEIGHT }}
+      style={{ height: taskHeight }}
     >
       <div className="task-ledger">
         <button
@@ -925,10 +977,31 @@ function TaskRow({
             {row.task.completed ? <Check aria-hidden="true" size={12} /> : null}
           </span>
         </button>
-        <button className="task-ledger-main" type="button" onClick={select}>
+        <button
+          aria-label={
+            inverted
+              ? `${row.task.title}, ${scheduleLabel(task)}. Select to edit dates.`
+              : !existingSpan && !mutationsDisabled
+                ? `${row.task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
+                : undefined
+          }
+          className={`task-ledger-main${!existingSpan && !mutationsDisabled ? " is-placeable" : ""}`}
+          type="button"
+          onClick={select}
+          onPointerDown={
+            !existingSpan && !mutationsDisabled
+              ? (event) => onBeginScheduleDrag(event, row.task, "place")
+              : undefined
+          }
+        >
           <span className="ledger-title">
             <strong>{row.task.title}</strong>
-            <small>{scheduleLabel(task)}</small>
+            <small
+              className={inverted ? "schedule-warning" : undefined}
+              title={inverted ? scheduleLabel(task) : undefined}
+            >
+              {inverted ? "Scheduled after due" : scheduleLabel(task)}
+            </small>
           </span>
           <span
             aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
@@ -1125,19 +1198,21 @@ function DependencyLayer({
   scale,
   timelineWidth,
   bodyHeight,
+  taskHeight,
   linkDrag,
 }: {
   rows: readonly GanttRow[];
   scale: ReturnType<typeof timelineScale>;
   timelineWidth: number;
   bodyHeight: number;
+  taskHeight: number;
   linkDrag: LinkDrag | null;
 }) {
   let offset = 0;
   const taskY = new Map<string, number>();
   const tasks = new Map<string, PlannerTask>();
   for (const row of rows) {
-    const height = row.kind === "group" ? GROUP_HEIGHT : TASK_HEIGHT;
+    const height = row.kind === "group" ? GROUP_HEIGHT : taskHeight;
     if (row.kind === "task") {
       taskY.set(row.task.id, offset + height / 2);
       tasks.set(row.task.id, row.task);
@@ -1221,6 +1296,9 @@ function DependencyLayer({
 }
 
 function scheduleLabel(task: PlannerTask): string {
+  if (hasInvertedSchedule(task)) {
+    return `Scheduled ${scheduleValueLabel(task.scheduled!)}; due ${scheduleValueLabel(task.due!)}. Scheduled is after the due date`;
+  }
   const span = taskSpan(task);
   if (!span) return "Not scheduled";
   if (span.milestone) return `Due ${scheduleValueLabel(task.due!)}`;
@@ -1253,6 +1331,15 @@ function scheduleValueLabel(value: string): string {
 function dependencyPath(x1: number, y1: number, x2: number, y2: number) {
   const bend = Math.max(14, Math.min(42, Math.abs(x2 - x1) / 2));
   return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+}
+
+function taskRowHeight(surface: HTMLElement): number {
+  const canvas = surface.querySelector<HTMLElement>(".gantt-canvas");
+  const value = canvas
+    ? getComputedStyle(canvas).getPropertyValue("--task-row-height")
+    : "";
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : TASK_HEIGHT;
 }
 
 function taskColumnWidth(surface: HTMLElement): number {

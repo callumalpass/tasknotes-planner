@@ -40,6 +40,10 @@ async function fixture({
     displayName: "Fixture",
     operations,
     scope: { access: "full_collection", contracts: [] },
+    fileCapability: {
+      actions: [...manifest.requirements.files.required],
+      scope: manifest.requirements.files.scope,
+    },
     authority: { kind: "connector", durability: "computer" },
     route: "relay",
     directAccess: "unavailable",

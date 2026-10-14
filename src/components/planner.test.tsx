@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MdbaseConnectError, type ConnectProblem } from "@mdbase-dev/connect";
 
 import { Planner } from "./planner";
@@ -107,6 +113,25 @@ describe("Planner connection recovery", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The session is no longer available.",
     );
+  });
+
+  it("surfaces asynchronous SDK clearSelection refusal without dropping the current ledger", async () => {
+    const repository = repositoryFixture();
+    const onChangeCollection = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(new Error("The original collection could not close."));
+    render(
+      <Planner
+        repository={repository}
+        onChangeCollection={onChangeCollection}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Work/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The original collection could not close.",
+    );
+    expect(screen.getByRole("button", { name: /Work/ })).toBeTruthy();
+    expect(onChangeCollection).toHaveBeenCalledOnce();
   });
 
   it("recovers a durable pending handle explicitly and reconciles by loading", async () => {
@@ -319,6 +344,64 @@ describe("Planner connection recovery", () => {
     expect(repository.updateProperties).not.toHaveBeenCalled();
     expect(repository.toggleCompletion).not.toHaveBeenCalled();
     expect(repository.saveView).not.toHaveBeenCalled();
+  });
+});
+
+describe("Planner save view dialog", () => {
+  it("keeps Tab inside the dialog and returns focus to the opener on Escape", async () => {
+    render(
+      <Planner
+        repository={repositoryFixture()}
+        onChangeCollection={() => undefined}
+      />,
+    );
+    const opener = await screen.findByRole("button", { name: "Save view" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole("dialog", { name: "Create Planner view" });
+    expect(screen.getByRole("textbox", { name: "View name" })).toHaveFocus();
+    const close = within(dialog).getByRole("button", { name: "Close" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    fireEvent.keyDown(cancel, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+});
+
+describe("Planner save as new view", () => {
+  it("retries a renamed save under the same intent", async () => {
+    const saveView = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("reply lost"))
+      .mockReturnValue(new Promise(() => undefined));
+    render(
+      <Planner
+        repository={repositoryFixture({ saveView })}
+        onChangeCollection={() => undefined}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Save view" }));
+    const dialog = screen.getByRole("dialog", { name: "Create Planner view" });
+    const name = screen.getByRole("textbox", { name: "View name" });
+    fireEvent.change(name, { target: { value: "First" } });
+    fireEvent.submit(name.closest("form")!);
+    await within(dialog).findByRole("alert");
+    fireEvent.change(name, { target: { value: "Renamed" } });
+    fireEvent.submit(name.closest("form")!);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(2));
+    const [[first], [retry]] = saveView.mock.calls as [
+      [{ intent: string }],
+      [{ intent: string; name: string }],
+    ];
+    expect(retry).toMatchObject({ name: "Renamed", intent: first.intent });
   });
 });
 

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 import { TaskInspector } from "./task-inspector";
 import { MdbaseConnectError, type ConnectProblem } from "@mdbase-dev/connect";
@@ -71,6 +77,91 @@ describe("TaskInspector", () => {
         priority: "normal",
       }),
     );
+  });
+
+  it("reconciles confirmed properties without losing an unsaved schedule draft", () => {
+    const onSaveProperties = vi.fn();
+    const props = {
+      allTasks: [task],
+      onClose: () => undefined,
+      onSave: vi.fn(),
+      onSaveDependencies: vi.fn(),
+      onSaveProperties,
+    };
+    const view = render(<TaskInspector {...props} task={task} />);
+    fireEvent.change(screen.getByLabelText("Scheduled"), {
+      target: { value: "2026-08-22" },
+    });
+    const confirmed = {
+      ...task,
+      status: "done",
+      statusLabel: "Done",
+      completed: true,
+      priority: "normal",
+      priorityLabel: "Normal",
+      projects: ["[[Launch]]"],
+    };
+    view.rerender(<TaskInspector {...props} task={confirmed} />);
+    expect(screen.getByText("Done · Normal priority")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status")).toHaveValue("done");
+    expect(screen.getByLabelText("Priority")).toHaveValue("normal");
+    expect(screen.getByRole("checkbox", { name: "Launch" })).toBeChecked();
+    expect(screen.getByLabelText("Scheduled")).toHaveValue("2026-08-22");
+    view.rerender(<TaskInspector {...props} task={task} />);
+    expect(screen.getByLabelText("Status")).toHaveValue("open");
+    expect(screen.getByLabelText("Priority")).toHaveValue("high");
+    expect(screen.getByLabelText("Scheduled")).toHaveValue("2026-08-22");
+    expect(onSaveProperties).not.toHaveBeenCalled();
+  });
+
+  it("keeps immediate property choices when the same confirmed values are refreshed", () => {
+    const props = {
+      allTasks: [task],
+      onClose: () => undefined,
+      onSave: vi.fn(),
+      onSaveDependencies: vi.fn(),
+      onSaveProperties: vi.fn(() => new Promise<void>(() => undefined)),
+    };
+    const view = render(<TaskInspector {...props} task={task} />);
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "done" },
+    });
+    view.rerender(
+      <TaskInspector
+        {...props}
+        task={{ ...task, projects: [...task.projects] }}
+      />,
+    );
+    expect(screen.getByLabelText("Status")).toHaveValue("done");
+  });
+
+  it("rolls a failed edit back to the latest confirmed value, not an old callback snapshot", async () => {
+    let rejectSave!: (reason: Error) => void;
+    const props = {
+      allTasks: [task],
+      onClose: () => undefined,
+      onSave: vi.fn(),
+      onSaveDependencies: vi.fn(),
+      onSaveProperties: vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectSave = reject;
+          }),
+      ),
+    };
+    const view = render(<TaskInspector {...props} task={task} />);
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "done" },
+    });
+    view.rerender(
+      <TaskInspector
+        {...props}
+        task={{ ...task, status: "done", statusLabel: "Done", completed: true }}
+      />,
+    );
+    await act(async () => rejectSave(new Error("The edit was rejected.")));
+    await screen.findByText("The edit was rejected.");
+    expect(screen.getByLabelText("Status")).toHaveValue("done");
   });
 
   it("does not roll an uncertain property choice back before recovery", async () => {
@@ -230,6 +321,39 @@ describe("TaskInspector", () => {
     expect(
       screen.getByRole("button", { name: "Save schedule" }),
     ).toBeDisabled();
+  });
+
+  it("flags an imported adjacent reverse range until the user fixes it", async () => {
+    const imported = { ...task, scheduled: "2026-08-18", due: "2026-08-17" };
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskInspector
+        allTasks={[imported]}
+        task={imported}
+        onClose={() => undefined}
+        onSave={onSave}
+        onSaveDependencies={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Due date must be on or after the scheduled date.",
+    );
+    const save = screen.getByRole("button", { name: "Save schedule" });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Due"), {
+      target: { value: "2026-08-19" },
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(imported, {
+        scheduled: "2026-08-18",
+        due: "2026-08-19",
+      }),
+    );
   });
 
   it("adds a selected blocking relationship", async () => {

@@ -444,6 +444,7 @@ select:focus-visible {
 }
 
 .planner-brand {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -458,14 +459,14 @@ select:focus-visible {
   min-width: 0;
 }
 
-.planner-brand > div > span {
+.planner-brand > div > span:not(.mdbase-collections) {
   display: block;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.1;
 }
 
-.planner-brand button {
+.planner-brand > div > button {
   max-width: 270px;
   min-height: 24px;
   display: flex;
@@ -655,6 +656,14 @@ select:focus-visible {
   font-size: 14px;
 }
 
+.planner-sync-status {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
 /* Gantt */
 .gantt-frame {
   position: relative;
@@ -673,6 +682,7 @@ select:focus-visible {
 
 .gantt-canvas {
   --task-column: 350px;
+  --task-row-height: 49px;
   position: relative;
   min-width: 100%;
 }
@@ -855,6 +865,16 @@ select:focus-visible {
   text-align: left;
 }
 
+.task-ledger-main.is-placeable {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.task-ledger-main.is-placeable:active {
+  cursor: grabbing;
+}
+
 .group-ledger {
   justify-content: space-between;
   padding: 0 14px 0 20px;
@@ -925,6 +945,10 @@ select:focus-visible {
   line-height: 15px;
 }
 
+.ledger-title .schedule-warning {
+  color: var(--danger);
+}
+
 .timeline-row {
   position: relative;
   border-bottom: 1px solid var(--line);
@@ -977,7 +1001,7 @@ select:focus-visible {
 .task-bar {
   position: absolute;
   z-index: 3;
-  top: 14px;
+  top: calc((var(--task-row-height) - 21px) / 2);
   height: 21px;
   min-width: 8px;
   border-radius: 4px;
@@ -1025,7 +1049,7 @@ select:focus-visible {
 }
 
 .task-bar.is-milestone {
-  top: 17px;
+  top: calc((var(--task-row-height) - 15px) / 2);
   width: 15px;
   height: 15px;
   min-width: 15px;
@@ -1714,7 +1738,7 @@ select:focus-visible {
   }
 
   .planner-header {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .planner-heading {
@@ -1748,15 +1772,21 @@ select:focus-visible {
     min-height: 63px;
   }
 
-  .planner-brand > div > span {
+  .planner-brand > div > span:not(.mdbase-collections) {
     font-size: 15px;
   }
 
-  .planner-brand button {
+  .planner-brand > div > button {
     max-width: 190px;
   }
 
-  .header-actions button:first-child {
+  .header-actions .save-view-control {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .save-view-control > span {
     display: none;
   }
 
@@ -1767,6 +1797,29 @@ select:focus-visible {
 
   .gantt-canvas {
     --task-column: 280px;
+    --task-row-height: 65px;
+  }
+
+  .unscheduled-row-action {
+    margin-top: calc((var(--task-row-height) - 30px) / 2);
+  }
+
+  .ledger-title strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .planning-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  .date-time-inputs {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .task-inspector {
@@ -1792,4 +1845,63 @@ select:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Shared mdbase collection UI, drawn with Planner's tokens. */
+:root {
+  --mdbase-collections-accent: var(--accent);
+  --mdbase-collections-on-accent: var(--paper);
+  --mdbase-collections-surface: var(--paper-raised);
+  --mdbase-collections-canvas: var(--paper);
+  --mdbase-collections-text: var(--ink);
+  --mdbase-collections-text-soft: var(--ink-soft);
+  --mdbase-collections-border: var(--line-strong);
+  --mdbase-collections-danger: var(--danger);
+  --mdbase-collections-font: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mdbase-collections-font-size: 15px;
+  --mdbase-collections-font-size-caption: 13px;
+  --mdbase-collections-font-size-section: 16px;
+  --mdbase-collections-font-size-heading: 30px;
+  --mdbase-collections-font-weight-strong: 700;
+  --mdbase-collections-radius-sm: 6px;
+  --mdbase-collections-radius: 6px;
+  --mdbase-collections-elevation-low: 0 4px 14px rgb(32 36 44 / 0.08);
+  --mdbase-collections-elevation-high: var(--shadow);
+  --mdbase-collections-control-height: 44px;
+}
+
+/* The header switcher keeps the collection line's small mono type. */
+.planner-collection-switcher {
+  --mdbase-collections-control-height: 24px;
+  margin-left: -6px;
+}
+
+.planner-collection-switcher .mdbase-collections-trigger {
+  max-width: 270px;
+  padding: 1px 6px;
+  color: var(--ink-muted);
+  font-family: "Azeret Mono", monospace;
+  font-size: 10px;
+}
+
+.planner-collection-switcher .mdbase-collections-trigger-name {
+  font-weight: 500;
+}
+
+.planner-collection-switcher .mdbase-collections-chevron {
+  width: 12px;
+  height: 12px;
+}
+
+@media (max-width: 560px) {
+  .planner-collection-switcher,
+  .planner-collection-switcher .mdbase-collections-trigger {
+    max-width: min(190px, 100%);
+  }
+}
+
+.grant-return {
+  margin: 0;
+  padding: 48px 24px;
+  text-align: center;
 }

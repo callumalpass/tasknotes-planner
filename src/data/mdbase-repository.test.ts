@@ -1,5 +1,6 @@
 import { type JsonObject, type MdbaseConnection } from "@mdbase-dev/connect";
 import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
+import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
 import { parse } from "yaml";
 
 import { MdbasePlannerRepository } from "./mdbase-repository";
@@ -21,7 +22,7 @@ describe("MdbasePlannerRepository", () => {
         types: ["task"],
         contract: {
           id: "tasknotes.task",
-          version: "0.3.0-rc.3",
+          version: TASKNOTES_SPEC_VERSION,
           type: "task",
         },
         effectiveFrontmatter: {
@@ -42,7 +43,7 @@ describe("MdbasePlannerRepository", () => {
           contracts: [
             {
               id: "tasknotes.task",
-              version: "0.3.0-rc.3",
+              version: TASKNOTES_SPEC_VERSION,
               digest: TASKNOTES_CONTRACT_DIGEST,
               implementations: [
                 {
@@ -143,7 +144,7 @@ describe("MdbasePlannerRepository", () => {
     const repository = new MdbasePlannerRepository(connection);
 
     const collection = await repository.load();
-    const contract = { id: "tasknotes.task", version: "0.3.0-rc.3" };
+    const contract = { id: "tasknotes.task", version: TASKNOTES_SPEC_VERSION };
     expect(connection.queryAll).toHaveBeenCalledWith(
       expect.objectContaining({ contract }),
       { firstPageSize: 500, pageSize: 1_000 },

@@ -38,7 +38,10 @@ Planner discovers Obsidian Bases views with `type: tasknotesPlanner`. Selecting
 one executes its standard Base filters and ordering through mdbase. Saving a
 view creates or updates a source under `TaskNotes/Views/`, with the current
 project, status, priority, completed-task preference, and zoom stored in the
-view. TaskNotes can show the same filtered result as a compact list and hand it
+view. The normal collection setup declares `md` and `base` in
+`settings.record_extensions`, preserving Markdown and existing extensions: the
+canonical `obsidian.base` type requires YAML document records, not opaque files.
+TaskNotes can show the same filtered result as a compact list and hand it
 off to Planner for timeline work.
 
 ## Timeline interactions
@@ -69,7 +72,10 @@ pnpm dev
 ```
 
 Open [http://127.0.0.1:4174/?demo=1](http://127.0.0.1:4174/?demo=1) for the
-sample plan, or remove `?demo=1` to connect an mdbase collection. Use
+sample plan, or remove `?demo=1` to connect an mdbase collection. The sample
+collection is labelled **Sample tasks**; its changes reset when you leave or
+reload. Choose its collection name to return to the connection screen. Leaving
+the sample also removes its URL flag, so reload does not reopen it. Use
 `127.0.0.1`, not the `localhost` alias: the manifest and callback share this
 single development origin.
 
@@ -133,6 +139,12 @@ signed release. This v2 draft must not deploy before the qualified v2 writer.
 
 The production declaration assumes `https://planner.tasknotes.dev/`. Update the
 homepage, icon, and redirect URI together if the deployment origin changes.
+
+## New SDK migration
+
+The existing Connect session remains the default. A native SDK data adapter is
+being prepared separately; it is not yet a browser sign-in mode. See
+[its behavior, pinned artifact, and remaining dependencies](docs/new-sdk.md).
 
 ## Repository structure
 

@@ -26,12 +26,16 @@ describe("Planner mdbase manifest", () => {
           "definitions.manage",
         ],
       },
+      files: {
+        required: ["list", "read", "replace", "move"],
+        scope: { kind: "collection" },
+      },
     });
-    expect(manifest.provisions.type_packs).toHaveLength(1);
+    expect(manifest.provisions.type_packs).toHaveLength(2);
     expect(manifest.provisions.type_packs[0].manifest.version).toBe(
       TASKNOTES_TYPE_PACK_VERSION,
     );
-    expect(TASKNOTES_TYPE_PACK_VERSION).toBe("0.3.0-rc.12");
+    expect(TASKNOTES_TYPE_PACK_VERSION).toBe("0.3.0-rc.18");
     expect(manifest.provisions.type_packs[0]).toMatchObject({
       manifest: {
         id: "tasknotes.task",
@@ -48,13 +52,58 @@ describe("Planner mdbase manifest", () => {
           }),
         ]),
       },
-      provides: manifest.requirements.contracts,
+      provides: [manifest.requirements.contracts[0]],
     });
+    // Bases discovery needs obsidian.base installed: required and provisioned.
+    expect(manifest.requirements.contracts.map(({ id }) => id)).toEqual([
+      "tasknotes.task",
+      "obsidian.base",
+    ]);
+    expect(manifest.provisions.type_packs[1]).toMatchObject({
+      manifest: { id: "obsidian.base", version: "1.0.0" },
+      provides: [manifest.requirements.contracts[1]],
+    });
+    expect(manifest.requirements.configuration).toEqual([
+      {
+        id: "tasknotes-planner-base-sources",
+        path: "/x-obsidian/bases/include",
+        predicate: "contains",
+        value: "TaskNotes/Views/**/*.base",
+      },
+      {
+        id: "tasknotes-planner-markdown-records",
+        path: "/settings/record_extensions",
+        predicate: "contains",
+        value: "md",
+      },
+      {
+        id: "tasknotes-planner-base-records",
+        path: "/settings/record_extensions",
+        predicate: "contains",
+        value: "base",
+      },
+    ]);
+    // Fresh collections default to Markdown: Bases must be declared as record
+    // extensions, not uploaded as opaque files. Preserve Markdown explicitly.
     expect(manifest.provisions.configuration).toEqual([
-      expect.objectContaining({
+      {
         requirement: "tasknotes-planner-base-sources",
         operation: "set_add",
-      }),
+        path: "/x-obsidian/bases/include",
+        value: "TaskNotes/Views/**/*.base",
+      },
+      {
+        requirement: "tasknotes-planner-markdown-records",
+        operation: "set_add",
+        path: "/settings/record_extensions",
+        value: "md",
+      },
+      {
+        requirement: "tasknotes-planner-base-records",
+        operation: "set_add",
+        path: "/settings/record_extensions",
+        value: "base",
+      },
     ]);
   });
 

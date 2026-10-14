@@ -76,6 +76,8 @@ export interface PlannerView {
 export interface SavePlannerViewInput extends PlannerViewOptions {
   name: string;
   view?: PlannerView;
+  /** Names one "save as new view" action; retries of it create one view. */
+  intent?: string;
 }
 
 export interface ScheduleUpdate {
@@ -93,6 +95,12 @@ export interface PendingPlannerMutation {
   requestId: string;
   operation: string;
   createdAt: string;
+}
+
+/** A write the collection refused after it was saved on this device. */
+export interface RejectedPlannerWrite {
+  id: string;
+  message: string;
 }
 
 export interface PlannerRepository {
@@ -113,5 +121,11 @@ export interface PlannerRepository {
   saveView(input: SavePlannerViewInput): Promise<PlannerView>;
   pendingMutations?(): readonly PendingPlannerMutation[];
   recoverPendingMutation?(requestId: string): Promise<void>;
+  rejectedWrites?(): readonly RejectedPlannerWrite[];
+  dismissRejectedWrite?(id: string): Promise<void>;
+  /** True while changes are kept on this device because the collection
+   * can't be reached right now (offline, unreachable or busy). */
+  savedOnDevice?(): boolean;
+  onSaveState?(listener: () => void): () => void;
   watch?(listener: () => void): Promise<() => void>;
 }

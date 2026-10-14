@@ -1,3 +1,4 @@
+import { CollectionSaveWarning } from "@mdbase-dev/ui/collections";
 import {
   CalendarDays,
   BookmarkPlus,
@@ -18,8 +19,10 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import {
@@ -31,13 +34,19 @@ import {
   zoomDefinition,
   type TimelineZoom,
 } from "../domain/gantt";
+import {
+  connectionNoticeLabels,
+  type ConnectionNotice,
+} from "./connection-notice";
 import { GanttChart } from "./gantt-chart";
 import { TaskInspector } from "./task-inspector";
+import { useModalFocus } from "./use-modal-focus";
 import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
 
 import type {
   PlannerCollection,
   PendingPlannerMutation,
+  RejectedPlannerWrite,
   PlannerRepository,
   PlannerTask,
   ScheduleUpdate,
@@ -45,12 +54,20 @@ import type {
   TaskPropertyUpdate,
 } from "../domain/task";
 
+const noop = () => {};
+
 export function Planner({
   repository,
   onChangeCollection,
+  collectionSwitcher,
+  connectionNotice = null,
 }: {
   repository: PlannerRepository;
-  onChangeCollection(): void;
+  onChangeCollection(): void | Promise<void>;
+  /** The shared mdbase collection switcher, in place of the collection button. */
+  collectionSwitcher?: ReactNode;
+  /** The SDK's offline, reconnecting or saved-on-device state. */
+  connectionNotice?: ConnectionNotice | null;
 }) {
   const [collection, setCollection] = useState<PlannerCollection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,13 +83,19 @@ export function Planner({
     new URLSearchParams(location.search).get("view"),
   );
   const [saveOpen, setSaveOpen] = useState(false);
+  const saveDialogRef = useRef<HTMLFormElement>(null);
+  useModalFocus(saveOpen, saveDialogRef, () => setSaveOpen(false));
   const [saveName, setSaveName] = useState("");
+  const [saveIntent, setSaveIntent] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [todayRequest, setTodayRequest] = useState(0);
   const [pendingMutations, setPendingMutations] = useState<
     readonly PendingPlannerMutation[]
+  >([]);
+  const [rejectedWrites, setRejectedWrites] = useState<
+    readonly RejectedPlannerWrite[]
   >([]);
   const [recoveringMutation, setRecoveringMutation] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
@@ -81,8 +104,19 @@ export function Planner({
   const mutationsDisabled =
     pendingMutations.length > 0 || Boolean(recoveringMutation);
 
+  const savedOnDevice = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => repository.onSaveState?.(listener) ?? noop,
+      [repository],
+    ),
+    () => repository.savedOnDevice?.() ?? false,
+  );
+  const notice: ConnectionNotice | null =
+    connectionNotice ?? (savedOnDevice ? "saved_on_device" : null);
+
   const refreshPendingMutations = useCallback(() => {
     setPendingMutations(repository.pendingMutations?.() ?? []);
+    setRejectedWrites(repository.rejectedWrites?.() ?? []);
   }, [repository]);
 
   const load = useCallback(
@@ -251,10 +285,10 @@ export function Planner({
     }
   }
 
-  function changeCollection() {
+  async function changeCollection() {
     setCollectionActionError("");
     try {
-      onChangeCollection();
+      await onChangeCollection();
     } catch (reason) {
       setCollectionActionError(errorMessage(reason));
     }
@@ -272,6 +306,7 @@ export function Planner({
 
   function openSaveView() {
     setSaveName(collection?.activeView?.name ?? "");
+    setSaveIntent(crypto.randomUUID());
     setSaveError("");
     setSaveOpen(true);
   }
@@ -288,6 +323,7 @@ export function Planner({
     try {
       const saved = await repository.saveView({
         name: saveName,
+        intent: saveIntent,
         ...(collection.activeView?.writable
           ? { view: collection.activeView }
           : {}),
@@ -333,11 +369,13 @@ export function Planner({
           <img alt="" src="/tasknotes-mark.svg" />
           <div>
             <span>TaskNotes Planner</span>
-            <button type="button" onClick={changeCollection}>
-              <Database aria-hidden="true" size={13} />
-              {collection.name}
-              <ChevronDown aria-hidden="true" size={13} />
-            </button>
+            {collectionSwitcher ?? (
+              <button type="button" onClick={changeCollection}>
+                <Database aria-hidden="true" size={13} />
+                {collection.name}
+                <ChevronDown aria-hidden="true" size={13} />
+              </button>
+            )}
           </div>
         </div>
         <div className="planner-heading">
@@ -346,6 +384,9 @@ export function Planner({
         </div>
         <div className="header-actions">
           <button
+            aria-label={
+              collection.activeView?.writable ? "Save changes" : "Save view"
+            }
             className="save-view-control"
             disabled={mutationsDisabled}
             type="button"
@@ -492,6 +533,12 @@ export function Planner({
           {collectionActionError}
         </p>
       ) : null}
+      {notice ? (
+        <p className="planner-sync-status" role="status">
+          {connectionNoticeLabels[notice]}
+        </p>
+      ) : null}
+      <CollectionSaveWarning />
       {pendingMutations.map((pending) => (
         <aside className="planner-error" key={pending.requestId} role="status">
           A {pending.operation} may already have completed. Recover its original
@@ -504,6 +551,21 @@ export function Planner({
             {recoveringMutation === pending.requestId
               ? "Recovering…"
               : "Recover pending change"}
+          </button>
+        </aside>
+      ))}
+      {rejectedWrites.map((write) => (
+        <aside className="planner-error" key={write.id} role="alert">
+          A change wasn’t saved: {write.message}
+          <button
+            type="button"
+            onClick={() =>
+              void repository
+                .dismissRejectedWrite?.(write.id)
+                .finally(refreshPendingMutations)
+            }
+          >
+            Dismiss
           </button>
         </aside>
       ))}
@@ -546,7 +608,9 @@ export function Planner({
         <div className="planner-dialog-backdrop" role="presentation">
           <form
             aria-labelledby="save-view-title"
+            aria-modal="true"
             className="planner-dialog"
+            ref={saveDialogRef}
             role="dialog"
             onSubmit={(event) => void saveView(event)}
           >
@@ -570,7 +634,7 @@ export function Planner({
             <label>
               <span>View name</span>
               <input
-                autoFocus
+                data-autofocus
                 required
                 value={saveName}
                 onChange={(event) => setSaveName(event.target.value)}

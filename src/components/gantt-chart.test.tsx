@@ -31,6 +31,106 @@ beforeEach(() => {
 });
 
 describe("GanttChart interactions", () => {
+  it("uses the responsive row height for ledger rows, timeline body and dependency endpoints", () => {
+    const readStyle = getComputedStyle;
+    const styleSpy = vi
+      .spyOn(globalThis, "getComputedStyle")
+      .mockImplementation((element) => {
+        const style = readStyle(element);
+        const readProperty = style.getPropertyValue.bind(style);
+        style.getPropertyValue = (name) =>
+          name === "--task-row-height" ? "65px" : readProperty(name);
+        return style;
+      });
+    try {
+      const first = makeTask({
+        id: "first",
+        scheduled: "2026-08-17",
+        due: "2026-08-18",
+      });
+      const second = makeTask({
+        id: "second",
+        scheduled: "2026-08-19",
+        due: "2026-08-20",
+        blockedBy: [{ uid: "first", reltype: "FINISHTOSTART" }],
+      });
+      const tasks = [first, second];
+      const view = render(
+        <GanttChart
+          allTasks={tasks}
+          tasks={tasks}
+          selectedId={null}
+          todayRequest={0}
+          zoom={3}
+          onSelect={() => undefined}
+          onZoom={() => undefined}
+          onScheduleChange={vi.fn().mockResolvedValue(undefined)}
+          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+        />,
+      );
+      for (const row of view.container.querySelectorAll(".task-row")) {
+        expect(row).toHaveStyle({ height: "65px" });
+      }
+      expect(view.container.querySelector(".gantt-body")).toHaveStyle({
+        height: "165px",
+      });
+      expect(view.container.querySelector(".dependency-layer")).toHaveAttribute(
+        "height",
+        "165",
+      );
+      const path = view.container.querySelector(".dependency-layer > path");
+      expect(path?.getAttribute("d")).toContain("67.5");
+      expect(path?.getAttribute("d")).toContain("132.5");
+    } finally {
+      styleSpy.mockRestore();
+    }
+  });
+
+  it("flags imported reversed dates without presenting them as a valid range", () => {
+    const task = Object.freeze(
+      makeTask({
+        title: "Imported inversion",
+        scheduled: "2026-11-02",
+        due: "2026-10-29",
+      }),
+    );
+    const onSelect = vi.fn();
+    const onScheduleChange = vi.fn();
+    const view = render(
+      <GanttChart
+        allTasks={[task]}
+        tasks={[task]}
+        selectedId={null}
+        todayRequest={0}
+        zoom={3}
+        onSelect={onSelect}
+        onZoom={vi.fn()}
+        onScheduleChange={onScheduleChange}
+        onDependenciesChange={vi.fn()}
+        onCompletionChange={vi.fn()}
+      />,
+    );
+    const warning = screen.getByText("Scheduled after due");
+    expect(warning).toHaveAttribute(
+      "title",
+      "Scheduled Nov 2; due Oct 29. Scheduled is after the due date",
+    );
+    expect(screen.queryByText("Nov 2 — Oct 29")).not.toBeInTheDocument();
+    const ledger = view.container.querySelector(".task-ledger-main")!;
+    expect(ledger).toHaveAccessibleName(
+      /Imported inversion, Scheduled Nov 2; due Oct 29.*Scheduled is after the due date/,
+    );
+    expect(view.container.querySelector(".task-bar-main")).toHaveAccessibleName(
+      /Scheduled is after the due date/,
+    );
+    fireEvent.click(ledger);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
+    expect(task.scheduled).toBe("2026-11-02");
+    expect(task.due).toBe("2026-10-29");
+  });
+
   it("gates timeline writes while keeping task selection available", async () => {
     const task = makeTask({
       id: "blocked",
@@ -161,6 +261,102 @@ describe("GanttChart interactions", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(onZoom).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { target: "date header", clientX: 420, clientY: 50, saves: true },
+    { target: "task ledger", clientX: 120, clientY: 250, saves: false },
+    { target: "toolbar", clientX: 420, clientY: -10, saves: false },
+  ])(
+    "handles unscheduled title drops over the $target",
+    async ({ clientX, clientY, saves }) => {
+      const task = makeTask({ id: "title-drag", title: "Unscheduled title" });
+      const onScheduleChange = vi.fn().mockResolvedValue(undefined);
+      const onSelect = vi.fn();
+      render(
+        <GanttChart
+          allTasks={[task]}
+          selectedId={null}
+          tasks={[task]}
+          todayRequest={0}
+          zoom={3}
+          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
+          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
+          onScheduleChange={onScheduleChange}
+          onSelect={onSelect}
+          onZoom={() => undefined}
+        />,
+      );
+      const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
+      vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 1200,
+        bottom: 900,
+        width: 1200,
+        height: 900,
+      } as DOMRect);
+      vi.spyOn(
+        document.querySelector<HTMLElement>(".timeline-row")!,
+        "getBoundingClientRect",
+      ).mockReturnValue({ left: 350 } as DOMRect);
+      const title = screen.getByRole("button", {
+        name: /Unscheduled title, not scheduled. Select to edit or drag/,
+      });
+      fireEvent.pointerDown(title, {
+        button: 0,
+        clientX: 160,
+        clientY: 250,
+        pointerId: 1,
+      });
+      fireEvent.pointerMove(window, { clientX, clientY, pointerId: 1 });
+      fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
+      fireEvent.click(title);
+      expect(onSelect).not.toHaveBeenCalled();
+      if (saves) {
+        await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
+        expect(onScheduleChange.mock.calls[0]).toEqual([
+          task,
+          {
+            due: undefined,
+            scheduled: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
+        ]);
+      } else {
+        expect(onScheduleChange).not.toHaveBeenCalled();
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+        );
+      }
+    },
+  );
+
+  it("keeps an unscheduled title click as task selection", () => {
+    const task = makeTask({ id: "title-click", title: "Unscheduled title" });
+    const onScheduleChange = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <GanttChart
+        allTasks={[task]}
+        selectedId={null}
+        tasks={[task]}
+        todayRequest={0}
+        zoom={3}
+        onDependenciesChange={vi.fn()}
+        onCompletionChange={vi.fn()}
+        onScheduleChange={onScheduleChange}
+        onSelect={onSelect}
+        onZoom={() => undefined}
+      />,
+    );
+    const title = screen.getByRole("button", {
+      name: /Unscheduled title, not scheduled/,
+    });
+    fireEvent.pointerDown(title, { button: 0, clientX: 160, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 160, pointerId: 1 });
+    fireEvent.click(title);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
   });
 
   it("places an unscheduled task on the timeline by dragging", async () => {

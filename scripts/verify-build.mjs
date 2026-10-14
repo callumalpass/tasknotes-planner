@@ -21,6 +21,20 @@ export async function verifyPlannerBuild({
     throw new Error(`Planner manifest does not declare ${appOrigin}.`);
 
   await readFile(resolve(root, "auth", "mdbase", "callback", "index.html"));
+  // Only real routes reach the app shell; unknown paths get a real 404.
+  const redirects = (await readFile(resolve(root, "_redirects"), "utf8"))
+    .trim()
+    .split("\n");
+  if (
+    !redirects.includes("/auth/mdbase/callback / 200") ||
+    redirects.some(
+      (rule) => /^\/\*\s/.test(rule) || /\s\/index(\.html)?\b/.test(rule),
+    )
+  )
+    throw new Error("Planner _redirects must list only real routes.");
+  const notFound = await readFile(resolve(root, "404.html"), "utf8");
+  if (!notFound.includes("Page not found") || notFound.includes('id="root"'))
+    throw new Error("Planner 404.html must be the not-found page.");
   const scripts = (await readdir(resolve(root, "assets")))
     .filter((file) => file.endsWith(".js"))
     .map((file) => resolve(root, "assets", file));

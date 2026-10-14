@@ -4,11 +4,13 @@ import "@fontsource/azeret-mono/500.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { App } from "./components/app";
+import { pageFor } from "./grant-return";
 import "./styles.css";
 
+// Decided once, before anything renders: a consent popup return never starts
+// the SDK entry.
+const page = pageFor(location.href, import.meta.env.VITE_MDBASE_ENV);
+
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  <StrictMode>{page}</StrictMode>,
 );

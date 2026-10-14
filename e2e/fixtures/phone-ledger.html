@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Planner phone fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      // Development-only HTML entry. No account, SDK application or transport.
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import "@fontsource/atkinson-hyperlegible/400.css";
+      import "@fontsource/atkinson-hyperlegible/700.css";
+      import "@fontsource/azeret-mono/400.css";
+      import "/src/styles.css";
+      import { Planner } from "/src/components/planner.tsx";
+      import { DemoPlannerRepository } from "/src/data/demo-repository.ts";
+
+      const repository = new DemoPlannerRepository();
+      const sample = await repository.load();
+      const open = sample.statuses.find((status) => status.value === "open");
+      if (!open) throw new Error("The fixture requires an open status");
+      for (const [index, task] of sample.tasks.slice(0, 2).entries()) {
+        await repository.updateSchedule(
+          {
+            ...task,
+            title: `[test] bugfix3 same-prefix phone task ${index ? "beta" : "alpha"}`,
+            status: open.value,
+            statusLabel: open.label,
+            statusColor: open.color,
+            completed: false,
+            projects: [],
+            blockedBy: [],
+          },
+          { scheduled: undefined, due: undefined },
+        );
+      }
+      createRoot(document.getElementById("root")).render(
+        React.createElement(Planner, {
+          repository,
+          onChangeCollection: async () => undefined,
+        }),
+      );
+    </script>
+  </body>
+</html>
