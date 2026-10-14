@@ -3,16 +3,13 @@ import { readFile, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { verifyPlannerBuild } from "./verify-build.mjs";
+import { plannerDeploymentFor } from "./deployment-environment.mjs";
 
-const deployment = Object.freeze({
-  appOrigin: "https://staging.tasknotes-planner.pages.dev",
-  connectOrigin: "https://connect-staging.mdbase.dev",
-  loopbackOrigin: "http://127.0.0.1:28486",
-  branch: "staging",
-});
+const deployment = plannerDeploymentFor(process.env);
 const environment = {
   ...process.env,
   TASKNOTES_PLANNER_URL: deployment.appOrigin,
+  ...(deployment.branch === "lab" ? {VITE_MDBASE_ENV:"lab"} : {}),
   VITE_MDBASE_CONNECT_URL: deployment.connectOrigin,
   VITE_MDBASE_CONNECT_LOOPBACK_URL: deployment.loopbackOrigin,
 };
@@ -39,7 +36,7 @@ await run("node", ["scripts/production-smoke.mjs"], {
   TASKNOTES_PRODUCTION_URL: deployment.appOrigin,
   MDBASE_CONNECT_ORIGIN: deployment.connectOrigin,
 });
-console.log(`Planner staging deployment is healthy: ${deployment.appOrigin}/`);
+console.log(`Planner ${deployment.branch} deployment is healthy: ${deployment.appOrigin}/`);
 
 async function buildWithTemporaryManifest(env, verify) {
   const targets = [

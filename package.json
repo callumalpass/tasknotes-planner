@@ -18,6 +18,7 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:deployment": "node --test scripts/deployment-environment.node-test.mjs",
     "test:e2e": "playwright test",
     "test:production-smoke": "node scripts/production-smoke.mjs",
     "format": "prettier --write .",
