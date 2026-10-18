@@ -2,6 +2,7 @@ import { CollectionSaveWarning } from "@mdbase-dev/ui/collections";
 import {
   CalendarDays,
   BookmarkPlus,
+  Plus,
   Check,
   ChevronDown,
   CircleAlert,
@@ -40,8 +41,10 @@ import {
 } from "./connection-notice";
 import { GanttChart } from "./gantt-chart";
 import { TaskInspector } from "./task-inspector";
+import { TaskCreateDialog } from "./task-create-dialog";
 import { useModalFocus } from "./use-modal-focus";
 import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
+import { taskNotesHref } from "../data/tasknotes-handoff";
 
 import type {
   PlannerCollection,
@@ -82,6 +85,7 @@ export function Planner({
   const [activeViewKey, setActiveViewKey] = useState<string | null>(() =>
     new URLSearchParams(location.search).get("view"),
   );
+  const [createOpen, setCreateOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const saveDialogRef = useRef<HTMLFormElement>(null);
   useModalFocus(saveOpen, saveDialogRef, () => setSaveOpen(false));
@@ -384,6 +388,16 @@ export function Planner({
         </div>
         <div className="header-actions">
           <button
+            aria-label="Add task"
+            className="add-task-control"
+            type="button"
+            disabled={mutationsDisabled}
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus aria-hidden="true" size={17} />
+            <span>Add task</span>
+          </button>
+          <button
             aria-label={
               collection.activeView?.writable ? "Save changes" : "Save view"
             }
@@ -579,19 +593,48 @@ export function Planner({
           Tasks may be out of date. {error}
         </p>
       ) : null}
-      <GanttChart
-        allTasks={collection.tasks}
-        mutationsDisabled={mutationsDisabled}
-        selectedId={selectedId}
-        tasks={visibleTasks}
-        todayRequest={todayRequest}
-        zoom={zoom}
-        onDependenciesChange={saveDependencies}
-        onCompletionChange={toggleCompletion}
-        onScheduleChange={saveSchedule}
-        onSelect={(task) => setSelectedId(task.id)}
-        onZoom={(direction) => setZoom((value) => clampZoom(value + direction))}
-      />
+      {!collection.activeView && collection.tasks.length === 0 ? (
+        <section className="gantt-empty" aria-labelledby="no-tasks-title">
+          <h2 id="no-tasks-title">No tasks yet</h2>
+          <p>
+            Add your first task here, or create tasks in TaskNotes and plan them
+            here.
+          </p>
+          <button
+            className="primary-action"
+            type="button"
+            disabled={mutationsDisabled}
+            onClick={() => setCreateOpen(true)}
+          >
+            Add your first task
+          </button>
+          <a
+            className="text-action"
+            href={taskNotesHref(collection.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Create tasks in TaskNotes
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        </section>
+      ) : (
+        <GanttChart
+          allTasks={collection.tasks}
+          mutationsDisabled={mutationsDisabled}
+          selectedId={selectedId}
+          tasks={visibleTasks}
+          todayRequest={todayRequest}
+          zoom={zoom}
+          onDependenciesChange={saveDependencies}
+          onCompletionChange={toggleCompletion}
+          onScheduleChange={saveSchedule}
+          onSelect={(task) => setSelectedId(task.id)}
+          onZoom={(direction) =>
+            setZoom((value) => clampZoom(value + direction))
+          }
+        />
+      )}
       {selected ? (
         <TaskInspector
           allTasks={collection.tasks}
@@ -604,6 +647,22 @@ export function Planner({
           onSave={saveSchedule}
         />
       ) : null}
+      <TaskCreateDialog
+        open={createOpen}
+        disabled={mutationsDisabled}
+        repository={repository}
+        onClose={() => setCreateOpen(false)}
+        onSettled={refreshPendingMutations}
+        onCreated={(task) => {
+          setQuery("");
+          setProject("all");
+          setStatus("all");
+          setPriority("all");
+          if (activeViewKey) chooseView("");
+          else void load(true);
+          setSelectedId(task.id);
+        }}
+      />
       {saveOpen ? (
         <div className="planner-dialog-backdrop" role="presentation">
           <form

@@ -76,6 +76,24 @@ export class DemoPlannerRepository implements PlannerRepository {
     return structuredClone(this.collection);
   }
 
+  async createTask(title: string, intent: string): Promise<PlannerTask> {
+    if (!title.trim()) throw new Error("Give this task a title.");
+    const previous = this.collection.tasks.find((task) => task.id === intent);
+    if (previous) return structuredClone(previous);
+    const task = demoTasks(dateFromDate(new Date()))[0];
+    const next = {
+      ...task,
+      id: intent,
+      path: `tasks/${intent}.md`,
+      title: title.trim(),
+      scheduled: undefined,
+      due: undefined,
+      blockedBy: [],
+    };
+    this.collection.tasks.push(next);
+    return structuredClone(next);
+  }
+
   async updateSchedule(
     task: PlannerTask,
     update: ScheduleUpdate,

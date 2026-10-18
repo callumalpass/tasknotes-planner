@@ -46,6 +46,17 @@ off to Planner for timeline work.
 
 ## Timeline interactions
 
+Use **Add task** in the header, or **Add your first task** in an empty
+collection. Planner creates a portable TaskNotes task through the collection's
+implementing `tasknotes.task` type, using its default status and priority. The
+new task is shared with TaskNotes, not a separate Planner task copy. Set its
+schedule and other planning properties in the inspector after adding it.
+
+An empty collection shows **No tasks yet**. If a saved view or the current
+filters hide tasks, Planner instead prompts you to change the view or filters.
+A secondary TaskNotes link opens the same collection in the matching LAB,
+staging, or production app; TaskNotes still owns its own sign-in and approval.
+
 - Use the minus and plus controls to move between quarter, month, fortnight,
   week, work-week, day, hour, and quarter-hour scales. `Ctrl`/`Cmd` + wheel
   zooms around the pointer.
@@ -117,7 +128,7 @@ local callback URLs are never deployed.
 The application requests full-collection authorization because mdbase saved
 views are collection-level resources. Task records are still selected and
 mutated only through `tasknotes.task`. Planner declares capability contract v2
-with required atomic groups `collection.read`, `records.edit`, `views.manage`,
+with required atomic groups `collection.read`, `records.create`, `records.edit`, `views.manage`,
 and `definitions.manage` for these workflows:
 
 - inspect the collection contract
@@ -125,14 +136,16 @@ and `definitions.manage` for these workflows:
   during authorization
 - query and read TaskNotes records
 - watch for collection changes
-- update TaskNotes records
+- create and update TaskNotes records
 - list and execute saved views
 - read, create, and update saved-view sources
 
 Atomic consent also grants record validation/rename, type reading/creation, and
 saved-view source deletion. Saved-view deletion is not record deletion, and no
-independent operation permission is requested. Record creation/deletion, files,
-offline replicas, and background scheduling remain excluded. See
+independent operation permission is requested. Task creation also requires the
+`add` file action; an older approval without it needs renewed consent. Record
+deletion, arbitrary file operations, offline replicas, and background scheduling
+remain excluded. See
 [the migration guard and rollout order](docs/capability-v2-migration.md): the
 vendored beta96 v2 candidate SDK is source-bound development evidence, not a published or
 signed release. This v2 draft must not deploy before the qualified v2 writer.

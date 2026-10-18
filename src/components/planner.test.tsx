@@ -410,6 +410,7 @@ function repositoryFixture(
 ): PlannerRepository {
   return {
     load: vi.fn(async () => structuredClone(collection)),
+    createTask: vi.fn(),
     updateSchedule: vi.fn(),
     updateDependencies: vi.fn(),
     updateProperties: vi.fn(),

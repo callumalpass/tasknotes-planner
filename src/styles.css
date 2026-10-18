@@ -514,7 +514,8 @@ select:focus-visible {
   background: var(--paper-soft);
 }
 
-.header-actions .save-view-control {
+.header-actions .save-view-control,
+.header-actions .add-task-control {
   width: auto;
   grid-auto-flow: column;
   gap: 7px;
@@ -1265,6 +1266,10 @@ select:focus-visible {
   color: var(--ink-muted);
 }
 
+.gantt-empty .primary-action {
+  margin: 16px auto 12px;
+}
+
 /* Inspector */
 .task-inspector {
   position: fixed;
@@ -1780,13 +1785,15 @@ select:focus-visible {
     max-width: 190px;
   }
 
-  .header-actions .save-view-control {
+  .header-actions .save-view-control,
+  .header-actions .add-task-control {
     width: 44px;
     height: 44px;
     padding: 0;
   }
 
-  .save-view-control > span {
+  .save-view-control > span,
+  .add-task-control > span {
     display: none;
   }
 

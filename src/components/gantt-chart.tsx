@@ -621,7 +621,7 @@ export function GanttChart({
     return (
       <section className="gantt-empty">
         <h2>No tasks match these controls</h2>
-        <p>Change the project, search, or completed-task filter.</p>
+        <p>Change the saved view, search, or task filters.</p>
       </section>
     );
 
