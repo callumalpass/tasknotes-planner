@@ -37,7 +37,8 @@ export default function SdkApp({ mdbase: supplied }: { mdbase?: Mdbase } = {}) {
     <CollectionGate
       {...ui}
       extraActions={(view) =>
-        view.kind === "signed_out" ? (
+        view.kind === "signed_out" ||
+        (view.kind === "problem" && view.notice.control?.kind === "sign_in") ? (
           <button className="text-action" type="button" onClick={enter}>
             Try sample tasks
           </button>
