@@ -21,13 +21,14 @@ describe("Planner mdbase manifest", () => {
         contract_version: 2,
         required: [
           "collection.read",
+          "records.create",
           "records.edit",
           "views.manage",
           "definitions.manage",
         ],
       },
       files: {
-        required: ["list", "read", "replace", "move"],
+        required: ["list", "read", "add", "replace", "move"],
         scope: { kind: "collection" },
       },
     });
@@ -115,6 +116,7 @@ describe("Planner mdbase manifest", () => {
       contract_version: 2,
       required: [
         "collection.read",
+        "records.create",
         "records.edit",
         "views.manage",
         "definitions.manage",

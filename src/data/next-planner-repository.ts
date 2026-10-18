@@ -18,6 +18,9 @@ import {
   taskInfoToSpecFields,
 } from "@tasknotes/model/operations";
 import { stringify } from "yaml";
+import { parseFrontmatter } from "@tasknotes/model/frontmatter";
+import { taskCreationFields, taskCreationPath } from "./task-creation";
+import { isOperationOutcomeUnknown } from "./outcome";
 import type { JsonObject } from "@mdbase-dev/connect";
 import type {
   PlannerCollection,
@@ -118,6 +121,69 @@ export class NextPlannerRepository implements PlannerRepository {
       statuses: aggregateStatuses(configurations.values()),
       priorities: aggregatePriorities(configurations.values()),
     };
+  }
+
+  async createTask(title: string, intent: string): Promise<PlannerTask> {
+    if (!title.trim()) throw new Error("Give this task a title.");
+    const signal = this.signal();
+    await this.revalidateConfigurations(signal);
+    const generation = this.generation;
+    const description = await this.client.describe(signal);
+    const configurations = configurationsFromDescription(description);
+    if (
+      configurationSignature(configurations) !==
+      configurationSignature(this.configurations)
+    )
+      throw new Error("The collection changed. Reload Planner before editing.");
+    const config = configurations.values().next().value!;
+    const type = description.types.find(
+      (type) => type.name === config.typeName,
+    )!;
+    const source = await this.client.resources.get(type.path, signal);
+    if (source.state !== "confirmed" || source.text === undefined)
+      throw new Error(
+        "The TaskNotes type definition must be confirmed before creating tasks.",
+      );
+    const path = taskCreationPath(
+      parseFrontmatter(source.text).frontmatter,
+      intent,
+    );
+    const frontmatter = taskCreationFields(title, intent, config);
+    signal.throwIfAborted();
+    if (generation !== this.generation) throw changed();
+    const result = await this.client.save(
+      this.client.create(
+        {
+          id: intent,
+          ...(path === undefined ? {} : { path }),
+          contract: {
+            id: "tasknotes.task",
+            version: TASKNOTES_SPEC_VERSION,
+            type: config.typeName,
+          },
+          frontmatter: frontmatter as Record<string, PlainValue>,
+        },
+        { intent, signal },
+      ),
+      { readBack: true, signal },
+    );
+    if (result.outcome === "rejected") {
+      const failure = result.problem
+        ? new MdbaseError(result.problem)
+        : new Error("The task creation was rejected.");
+      if (!isOperationOutcomeUnknown(failure))
+        await this.client.ledger.acknowledge(result.mutationId);
+      throw failure;
+    }
+    if (!result.record)
+      throw new Error(
+        "The created task is unavailable. Reconcile the original creation before adding it again.",
+      );
+    if (result.record.state.hold || result.record.state.unresolved)
+      throw new Error(
+        "The new task has a conflict. Resolve it in TaskNotes before planning.",
+      );
+    return task(result.record, configurations);
   }
 
   updateSchedule(

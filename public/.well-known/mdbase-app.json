@@ -22,6 +22,7 @@
       "contract_version": 2,
       "required": [
         "collection.read",
+        "records.create",
         "records.edit",
         "views.manage",
         "definitions.manage"
@@ -29,7 +30,7 @@
     },
     "access": "full_collection",
     "files": {
-      "required": ["list", "read", "replace", "move"],
+      "required": ["list", "read", "add", "replace", "move"],
       "scope": { "kind": "collection" }
     },
     "configuration": [

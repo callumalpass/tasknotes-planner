@@ -105,6 +105,8 @@ export interface RejectedPlannerWrite {
 
 export interface PlannerRepository {
   load(viewKey?: string): Promise<PlannerCollection>;
+  /** One intent per draft; retrying it must not create another task. */
+  createTask(title: string, intent: string): Promise<PlannerTask>;
   updateSchedule(
     task: PlannerTask,
     update: ScheduleUpdate,

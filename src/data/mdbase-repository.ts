@@ -22,8 +22,10 @@ import {
   type StatusConfig,
 } from "@tasknotes/model";
 import { parse, stringify } from "yaml";
+import { parseFrontmatter } from "@tasknotes/model/frontmatter";
 
 import { requireOutcome } from "./outcome";
+import { taskCreationFields, taskCreationPath } from "./task-creation";
 
 import type {
   PlannerCollection,
@@ -112,6 +114,29 @@ export class MdbasePlannerRepository implements PlannerRepository {
       priorities: aggregatePriorities(this.taskTypes.values()),
     };
     return structuredClone(this.collection);
+  }
+
+  async createTask(title: string, intent: string): Promise<PlannerTask> {
+    if (!title.trim()) throw new Error("Give this task a title.");
+    await this.load();
+    const config = this.taskTypes.values().next().value;
+    if (!config)
+      throw new Error("The TaskNotes contract has no implementing types.");
+    const type = requireOutcome(
+      await this.connection.readType({ name: config.typeName }),
+    );
+    const path = taskCreationPath(
+      parseFrontmatter(type.document).frontmatter,
+      intent,
+    );
+    const saved = requireOutcome(
+      await this.connection.create({
+        ...(path === undefined ? {} : { path }),
+        contract: { ...contract, type: config.typeName },
+        frontmatter: taskCreationFields(title, intent, config),
+      }),
+    );
+    return this.taskFromRecord(saved);
   }
 
   async updateSchedule(

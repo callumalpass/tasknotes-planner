@@ -77,7 +77,8 @@ and no optional capabilities:
 | Group                | Consent meaning                                                                                                                     |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `collection.read`    | Describe, changes, read/query, list/execute views, read view sources, validate records, and read types.                             |
-| `records.edit`       | Update and rename records; no record creation or deletion.                                                                          |
+| `records.create`     | Create TaskNotes tasks through their implementing record contract.                                                                  |
+| `records.edit`       | Update and rename records; no record deletion.                                                                                      |
 | `views.manage`       | Create, update, and delete saved-view sources. Whole-group consent intentionally includes saved-view deletion, not record deletion. |
 | `definitions.manage` | Create/update types and assess/apply type packs.                                                                                    |
 
@@ -87,10 +88,12 @@ deletion. These are atomic group meanings, not independently requested operation
 permissions. Setup assessment/application is handled by Connect's separate
 setup flow, with the existing provisions unchanged.
 
-No `records.create`, `records.delete`, `offline.replica`, or
-`background.schedule` is requested. Collection file actions `list`, `read`,
-`replace` and `move` are declared because next accounts approve
-`collection.read` and `records.edit` together with their matching file actions. Full-collection authorization remains
+Planner now requests `records.create` for its add-task workflow, together with
+the `add` file action. Existing approvals must grant this expanded declaration;
+the app cannot treat an old edit-only grant as creation authority.
+No `records.delete`, `offline.replica`, or `background.schedule` is requested.
+Collection file actions `list`, `read`, `add`, `replace` and `move` accompany
+`collection.read`, `records.create` and `records.edit`. Full-collection authorization remains
 necessary for Bases, while the application continues to select and mutate task
 records through `tasknotes.task` only. No app capability aliases or fabricated
 SDK groups were introduced; session state handling remains SDK-owned.

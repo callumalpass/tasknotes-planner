@@ -55,7 +55,7 @@ describe("Planner's installed Connect runtime", () => {
     expect(Object.keys(effective.values)).toEqual(
       manifest.requirements.capabilities.required,
     );
-    expect(operations).not.toContain("create");
+    expect(operations).toContain("create");
     expect(operations).not.toContain("delete");
     expect(operations.some((op) => /file|timer|sync/i.test(op))).toBe(false);
     // Prior Planner grant's exact operation union is not authority for whole v2 groups.

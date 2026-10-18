@@ -66,6 +66,45 @@ describe("Planner native client surface (SDK testing fake, not native acceptance
     expect(close).not.toHaveBeenCalled();
   });
 
+  it("hands the native empty collection to TaskNotes and replaces the state after a watched creation", async () => {
+    vi.stubEnv("VITE_MDBASE_ENV", "lab");
+    try {
+      const { client, repository, replica, record } = await nativeFixture();
+      replica.deleteElsewhere(record.path);
+      render(<Planner repository={repository} onChangeCollection={vi.fn()} />);
+      expect(
+        await screen.findByRole("heading", { name: "No tasks yet" }),
+      ).toBeVisible();
+      const link = screen.getByRole("link", {
+        name: /Create tasks in TaskNotes/,
+      });
+      const destination = new URL(link.getAttribute("href")!);
+      expect(destination.origin).toBe("https://lab.tasknotes-app.pages.dev");
+      expect(destination.searchParams.get("collection")).toBe(
+        client.hello.collection,
+      );
+      const created = replica.seed({
+        path: "tasks/first.md",
+        types: ["task"],
+        frontmatter: {
+          id: "first-task",
+          title: "Created in TaskNotes",
+          status: "open",
+        },
+      });
+      replica.editElsewhere(created.path, {
+        body: "The task arrived from another app.",
+      });
+      expect(await screen.findByText("Created in TaskNotes")).toBeVisible();
+      expect(screen.queryByText("No tasks yet")).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: /Create tasks in TaskNotes/ }),
+      ).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("shows an exact-contract refusal instead of an empty or ready planning ledger", async () => {
     const { client, repository, catalog } = await nativeFixture();
     vi.mocked(client.describe).mockResolvedValue({ ...catalog, contracts: [] });

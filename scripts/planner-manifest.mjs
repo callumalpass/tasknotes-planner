@@ -9,6 +9,7 @@ export { TASKNOTES_TYPE_PACK_VERSION } from "./canonical-task-pack.mjs";
 
 export const requiredCapabilities = Object.freeze([
   "collection.read",
+  "records.create",
   "records.edit",
   "views.manage",
   "definitions.manage",
@@ -46,7 +47,7 @@ export async function buildPlannerManifest({ appUrl, development = false }) {
       // Next accounts approve each record capability together with its file
       // actions: reading needs list and read, editing needs replace and move.
       files: {
-        required: ["list", "read", "replace", "move"],
+        required: ["list", "read", "add", "replace", "move"],
         scope: { kind: "collection" },
       },
       configuration: [

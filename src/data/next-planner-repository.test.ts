@@ -1,12 +1,15 @@
 import {
   connect,
   toValue,
+  toPlain,
+  MdbaseError,
   type MdbaseClient,
   type wire,
 } from "@mdbase-dev/sdk";
 import { MemoryReplica } from "@mdbase-dev/sdk/testing";
 import { TASKNOTES_CONTRACT_DIGEST } from "@tasknotes/model/mdbase";
 import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
+import { specFrontmatterToTaskInfo } from "@tasknotes/model/operations";
 import { NextPlannerRepository } from "./next-planner-repository";
 import type { NextPlannerViewAccess } from "./next-planner-views";
 import type { PlannerView } from "../domain/task";
@@ -204,6 +207,187 @@ describe("NextPlannerRepository (SDK stand-in, not LAB)", () => {
       frontmatter: { id: "portable-plan" },
     });
     await expect(f.repo.load()).rejects.toThrow("same portable identity");
+  });
+
+  it("creates TaskNotes records through the implementing contract with mapped defaults and stable retry identity", async () => {
+    const f = await fixture();
+    f.replica.seedResource(
+      "_types/todo.md",
+      "---\nname: todo\ncollection:\n  path:\n    folder: work\n---\n",
+    );
+    await f.repo.load();
+    const create = vi.spyOn(f.client, "create");
+    const intent = crypto.randomUUID();
+    const saved = await f.repo.createTask("  A task from Planner  ", intent);
+    expect(saved).toMatchObject({
+      id: intent,
+      title: "A task from Planner",
+      providerType: "todo",
+      status: "open",
+      priority: "normal",
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: intent,
+        path: `work/${intent}.md`,
+        contract: {
+          id: "tasknotes.task",
+          version: TASKNOTES_SPEC_VERSION,
+          type: "todo",
+        },
+        frontmatter: expect.objectContaining({
+          id: intent,
+          title: "A task from Planner",
+          status: "open",
+          priority: "normal",
+        }),
+      }),
+      expect.objectContaining({ intent, signal: expect.any(AbortSignal) }),
+    );
+    const stored = await f.client.get(
+      { path: saved.path },
+      { body: true, effective: true },
+    );
+    expect(stored.types).toEqual(["todo"]);
+    expect(stored.frontmatter.get("headline")).toBe("A task from Planner");
+    expect(stored.frontmatter.get("state")).toBe("open");
+    expect(stored.frontmatter.get("urgency")).toBe("normal");
+    expect(stored.frontmatter.has("title")).toBe(false);
+    const portable = await f.client.getContract(stored.id, {
+      id: "tasknotes.task",
+      version: TASKNOTES_SPEC_VERSION,
+      type: "todo",
+    });
+    const taskNotes = specFrontmatterToTaskInfo(
+      Object.fromEntries(
+        [...portable.fields].map(([key, value]) => [key, toPlain(value)]),
+      ),
+      portable.path,
+    );
+    expect(taskNotes).toMatchObject({
+      title: "A task from Planner",
+      status: "open",
+      priority: "normal",
+    });
+    // A second app reading the portable contract sees the same task, not a Planner-only copy.
+    const other = new NextPlannerRepository(
+      f.client,
+      "The same collection",
+      f.views,
+    );
+    repositories.push(other);
+    expect(
+      (await other.load()).tasks.find((task) => task.id === intent)?.title,
+    ).toBe("A task from Planner");
+    expect((await f.repo.createTask("A task from Planner", intent)).id).toBe(
+      intent,
+    );
+    expect(
+      (await f.repo.load()).tasks.filter((task) => task.id === intent),
+    ).toHaveLength(1);
+  });
+
+  it("does not submit blank titles or an unconfirmed creation policy", async () => {
+    const f = await fixture();
+    await f.repo.load();
+    const create = vi.spyOn(f.client, "create");
+    await expect(f.repo.createTask("  ", crypto.randomUUID())).rejects.toThrow(
+      /title/i,
+    );
+    f.replica.seedResource("_types/todo.md", "---\nname: todo\n---\n");
+    const get = f.client.resources.get.bind(f.client.resources);
+    vi.spyOn(f.client.resources, "get").mockImplementation(async (...args) => ({
+      ...(await get(...args)),
+      state: "pending",
+    }));
+    await expect(
+      f.repo.createTask("Not yet", crypto.randomUUID()),
+    ).rejects.toThrow(/confirmed/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("reports pending creates as saved on this device and later refusals through the ledger", async () => {
+    const f = await fixture({ pending: true });
+    f.replica.seedResource(
+      "_types/todo.md",
+      "---\nname: todo\ncollection:\n  path:\n    folder: work\n---\n",
+    );
+    await f.repo.load();
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementation((write, options) =>
+      save(write, { ...options, timeoutMs: 10 }),
+    );
+    f.replica.setOnline(false);
+    const task = await f.repo.createTask(
+      "Waiting for the log",
+      crypto.randomUUID(),
+    );
+    expect(task.title).toBe("Waiting for the log");
+    await vi.waitFor(() => expect(f.repo.savedOnDevice()).toBe(true));
+    expect(f.client.ledger.getSnapshot().pending).toHaveLength(1);
+    const [pending] = f.client.ledger.getSnapshot().pending;
+    f.replica.reject(pending.mutationId, {
+      code: "conflict",
+      recovery: "refresh",
+      message: "The log refused creation",
+    });
+    await vi.waitFor(() =>
+      expect(f.repo.rejectedWrites()).toEqual([
+        { id: pending.mutationId, message: "The log refused creation" },
+      ]),
+    );
+  });
+
+  it("does not duplicate a task when the first create committed but its caller lost the reply", async () => {
+    const f = await fixture();
+    f.replica.seedResource(
+      "_types/todo.md",
+      "---\nname: todo\ncollection:\n  path:\n    folder: work\n---\n",
+    );
+    await f.repo.load();
+    const save = f.client.save.bind(f.client);
+    vi.spyOn(f.client, "save").mockImplementationOnce(async (...args) => {
+      await save(...args);
+      throw new MdbaseError({
+        code: "outcome_unknown",
+        recovery: "refresh",
+        message: "Reply lost after commit",
+      });
+    });
+    const intent = crypto.randomUUID();
+    await expect(
+      f.repo.createTask("One shared task", intent),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect((await f.repo.createTask("One shared task", intent)).id).toBe(
+      intent,
+    );
+    expect(
+      (await f.repo.load()).tasks.filter((task) => task.id === intent),
+    ).toHaveLength(1);
+  });
+
+  it("preserves unknown receipt evidence rather than acknowledging it as a terminal refusal", async () => {
+    const f = await fixture();
+    f.replica.seedResource("_types/todo.md", "---\nname: todo\n---\n");
+    await f.repo.load();
+    const acknowledge = vi.spyOn(f.client.ledger, "acknowledge");
+    vi.spyOn(f.client, "save").mockImplementation(async (write) => {
+      const captured = await write;
+      return {
+        outcome: "rejected",
+        mutationId: captured.mutationId,
+        records: [],
+        problem: {
+          code: "outcome_unknown",
+          recovery: "refresh",
+          message: "The result is unknown",
+        },
+      };
+    });
+    await expect(
+      f.repo.createTask("Do not abandon", crypto.randomUUID()),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(acknowledge).not.toHaveBeenCalled();
   });
 
   it("writes canonical schedule fields through the task contract", async () => {

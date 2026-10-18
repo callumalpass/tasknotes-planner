@@ -14,8 +14,9 @@ export function requireOutcome<Value, Code extends ConnectProblemCode>(
 
 export function isOperationOutcomeUnknown(reason: unknown): boolean {
   return (
-    reason instanceof MdbaseConnectError &&
-    reason.problem.operation_outcome === "unknown"
+    (reason instanceof MdbaseConnectError &&
+      reason.problem.operation_outcome === "unknown") ||
+    describeError(reason)?.code === "outcome_unknown"
   );
 }
 
