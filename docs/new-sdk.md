@@ -14,7 +14,6 @@ admission, READ/edit/reload or production release qualification.
 
 ## Prior intake notes (superseded SDK pin)
 
-
 `NextPlannerRepository` implements `PlannerRepository` directly on the pinned
 `@mdbase-dev/sdk` package. The existing Connect session remains the application
 default. There is **no working new-SDK browser sign-in switch in this change**;
