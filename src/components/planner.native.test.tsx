@@ -1,6 +1,14 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MdbaseClient } from "@mdbase-dev/sdk";
+import { TASKNOTES_SPEC_VERSION } from "@tasknotes/model";
 import { nativePlannerFixture } from "../test/native-planner-fixture";
 import { NextPlannerRepository } from "../data/next-planner-repository";
 import { Planner } from "./planner";
@@ -103,6 +111,38 @@ describe("Planner native client surface (SDK testing fake, not native acceptance
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("creates through the empty-state form and reads back the shared native task", async () => {
+    const { client, repository, replica, record } = await nativeFixture();
+    replica.deleteElsewhere(record.path);
+    replica.seedResource(
+      "_types/task.md",
+      "---\nname: task\ncollection:\n  path:\n    folder: tasks\n---\n",
+    );
+    render(<Planner repository={repository} onChangeCollection={vi.fn()} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add your first task" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Add task" });
+    fireEvent.change(
+      within(dialog).getByRole("textbox", { name: "Task title" }),
+      { target: { value: "Shared native task" } },
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add task" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add task" })).toBeNull(),
+    );
+    expect(screen.queryByText("No tasks yet")).toBeNull();
+    expect(screen.getAllByText("Shared native task").length).toBeGreaterThan(0);
+    const [task] = (await repository.load()).tasks;
+    const projected = await client.getContract(
+      { path: task.path },
+      { id: "tasknotes.task", version: TASKNOTES_SPEC_VERSION, type: "task" },
+    );
+    expect(projected.fields.get("title")).toBe("Shared native task");
+    expect(projected.fields.get("status")).toBe("open");
+    expect(projected.fields.get("id")).toBe(task.id);
   });
 
   it("shows an exact-contract refusal instead of an empty or ready planning ledger", async () => {

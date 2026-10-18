@@ -98,6 +98,7 @@ export function TaskCreateDialog({
             Cancel
           </button>
           <button
+            className="primary-action"
             type="submit"
             disabled={busy || disabled || !draft.title.trim()}
           >

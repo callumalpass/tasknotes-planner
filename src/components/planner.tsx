@@ -388,6 +388,8 @@ export function Planner({
         </div>
         <div className="header-actions">
           <button
+            aria-label="Add task"
+            className="add-task-control"
             type="button"
             disabled={mutationsDisabled}
             onClick={() => setCreateOpen(true)}
@@ -599,6 +601,7 @@ export function Planner({
             here.
           </p>
           <button
+            className="primary-action"
             type="button"
             disabled={mutationsDisabled}
             onClick={() => setCreateOpen(true)}
