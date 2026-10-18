@@ -43,11 +43,11 @@ describe("Private collection consent popup return", () => {
 
   it("in LAB, delivers without self-closing or starting another SDK entry", async () => {
     const deliver = vi.fn(async () => {});
-    const close = vi.spyOn(window,"close");
+    const close = vi.spyOn(window, "close");
     render(<>{pageFor(callback, "lab", deliver)}</>);
     expect(screen.getByText("You can close this window.")).toBeTruthy();
     expect(deliver).toHaveBeenCalledWith(callback);
-    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(close).not.toHaveBeenCalled();
     expect(sdk.plannerMdbase).not.toHaveBeenCalled();
     close.mockRestore();

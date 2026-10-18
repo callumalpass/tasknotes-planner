@@ -9,7 +9,7 @@ const deployment = plannerDeploymentFor(process.env);
 const environment = {
   ...process.env,
   TASKNOTES_PLANNER_URL: deployment.appOrigin,
-  ...(deployment.branch === "lab" ? {VITE_MDBASE_ENV:"lab"} : {}),
+  ...(deployment.branch === "lab" ? { VITE_MDBASE_ENV: "lab" } : {}),
   VITE_MDBASE_CONNECT_URL: deployment.connectOrigin,
   VITE_MDBASE_CONNECT_LOOPBACK_URL: deployment.loopbackOrigin,
 };
@@ -36,7 +36,9 @@ await run("node", ["scripts/production-smoke.mjs"], {
   TASKNOTES_PRODUCTION_URL: deployment.appOrigin,
   MDBASE_CONNECT_ORIGIN: deployment.connectOrigin,
 });
-console.log(`Planner ${deployment.branch} deployment is healthy: ${deployment.appOrigin}/`);
+console.log(
+  `Planner ${deployment.branch} deployment is healthy: ${deployment.appOrigin}/`,
+);
 
 async function buildWithTemporaryManifest(env, verify) {
   const targets = [

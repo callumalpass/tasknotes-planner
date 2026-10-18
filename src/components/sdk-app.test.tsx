@@ -89,6 +89,39 @@ it("offers sample tasks on the sign-in screen only", async () => {
   ).toBeTruthy();
 });
 
+it.each(["refused", "expired"] as const)(
+  "keeps sample tasks usable after a persisted %s sign-in problem",
+  async (problem) => {
+    const mdbase = await testMdbase({ problem });
+    const first = render(<SdkApp mdbase={mdbase} />);
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(
+      screen.getByRole("button", { name: "Try sample tasks" }),
+    ).toBeTruthy();
+    // Re-mount with the retained SDK refusal, as a page reopening does.
+    first.unmount();
+    render(<SdkApp mdbase={mdbase} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Try sample tasks" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Sample tasks" }),
+    ).toBeTruthy();
+    expect(
+      mdbase.fixture.controls.observedActions().map((call) => call.action),
+    ).not.toContain("signOut");
+    expect(
+      mdbase.fixture.controls.observedActions().map((call) => call.action),
+    ).not.toContain("close");
+  },
+);
+
+it("does not offer sample tasks over an open collection problem", async () => {
+  render(<SdkApp mdbase={await testMdbase({ problem: "conflict" })} />);
+  await screen.findByRole("button", { name: "Try again" });
+  expect(screen.queryByRole("button", { name: "Try sample tasks" })).toBeNull();
+});
+
 it("opens the ready collection with the shared switcher in the header", async () => {
   const { container } = render(<SdkApp mdbase={await testMdbase("ready")} />);
   await waitFor(() =>
