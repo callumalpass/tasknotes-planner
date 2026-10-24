@@ -16,6 +16,8 @@ import type {
   CalendarOptions,
   ExternalDragSource,
   ItemChangeArg,
+  LinkDragArg,
+  TimelineAnchor,
   TimelineRow,
   TimelineScale as CalendarTimelineScale,
 } from "@tasknotes/calendar";
@@ -24,19 +26,17 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   addOrReplaceDependency,
   canAddDependency,
-  DAY_MINUTES,
   dateFromDate,
   dateLabel,
   dependencyRelationship,
-  dependencyTaskIds,
   groupTasks,
   hasInvertedSchedule,
   placedSchedule,
-  planningMinute,
   scheduleFromTimelineChange,
   taskHasTime,
   taskSpan,
   taskTimelineItem,
+  timelineDependencies,
   timelineScale,
   type GanttRow,
   type TimelineChangeKind,
@@ -59,15 +59,6 @@ const LEDGER = {
   wide: { labelWidth: 350, rowHeight: 49 },
   phone: { labelWidth: 280, rowHeight: 65 },
 } as const;
-
-/** Days per scale unit, as the calendar's timeline measures them. */
-const UNIT_DAYS: Record<CalendarTimelineScale["unit"], number> = {
-  hour: 1 / 24,
-  day: 1,
-  week: 7,
-  month: 30.44,
-  quarter: 91.31,
-};
 
 interface InteractionMessage {
   tone: "neutral" | "success" | "danger";
@@ -118,18 +109,10 @@ function GanttTimeline({
   const host = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<Calendar<PlacementData> | null>(null);
   const wheelHandler = useRef<((event: WheelEvent) => void) | null>(null);
-  const previousScale = useRef<{ scale: TimelineScale; labelWidth: number }>(
-    null,
-  );
-  const pendingZoomAnchor = useRef<{
-    minute: number;
-    viewportX: number;
-  } | null>(null);
+  // The pointer position of a Ctrl/Cmd+wheel zoom, kept in place on rescale.
+  const pendingZoomAnchor = useRef<TimelineAnchor | null>(null);
   const lastTodayRequest = useRef<number | null>(null);
   const statusTimer = useRef<number | null>(null);
-  // Ledger labels are React portals, so their clicks reach React before the
-  // calendar can suppress the click that ends a placement drag.
-  const placementClick = useRef(false);
   const [labelHosts, setLabelHosts] = useState<
     ReadonlyMap<string, HTMLElement>
   >(() => new Map());
@@ -179,7 +162,7 @@ function GanttTimeline({
             color,
             backgroundColor: color,
             textColor: "var(--paper)",
-            dependsOn: dependencyTaskIds(task, allTasks),
+            dependsOn: timelineDependencies(task, allTasks),
           },
         ];
       }),
@@ -303,12 +286,12 @@ function GanttTimeline({
       throw new Error("Schedule not saved.");
   }
 
-  function linkTasks(fromId: string, toId: string) {
-    const allowed = canAddDependency(allTasks, fromId, toId);
-    if (!allowed.allowed) {
-      showMessage({ tone: "danger", text: allowed.reason }, 3_500);
-      return;
-    }
+  function linkTasks(
+    fromId: string,
+    toId: string,
+    fromEdge: "start" | "finish",
+    toEdge: "start" | "finish",
+  ) {
     const target = allTasks.find((task) => task.id === toId);
     if (!target) return;
     void commitDependencies(
@@ -316,9 +299,28 @@ function GanttTimeline({
       addOrReplaceDependency(
         target.blockedBy,
         fromId,
-        dependencyRelationship("finish", "start"),
+        dependencyRelationship(fromEdge, toEdge),
         allTasks,
       ),
+    );
+  }
+
+  /** Live guidance while a relationship handle is dragged. */
+  function showLinkDrag(drag: LinkDragArg<PlacementData>) {
+    if (drag.phase === "end") {
+      if (drag.to && !drag.valid && drag.reason)
+        showMessage({ tone: "danger", text: drag.reason }, 3_500);
+      else if (!drag.linked) setInteractionMessage(null);
+      return;
+    }
+    if (statusTimer.current !== null) window.clearTimeout(statusTimer.current);
+    setInteractionMessage(
+      drag.to && !drag.valid && drag.reason
+        ? { tone: "danger", text: drag.reason }
+        : {
+            tone: "neutral",
+            text: "Drop on a task edge to set the relationship",
+          },
     );
   }
 
@@ -347,12 +349,6 @@ function GanttTimeline({
     };
     const start = (from: PointerEvent) => {
       stop();
-      placementClick.current = true;
-      doc.addEventListener(
-        "pointerup",
-        () => window.setTimeout(() => (placementClick.current = false), 0),
-        { once: true },
-      );
       calendar.beginExternalDrag(from, source);
     };
     // Mouse placement starts after a small movement so a click still selects;
@@ -377,34 +373,14 @@ function GanttTimeline({
       }, 350);
   }
 
+  /** The calendar only drops on task rows, headings and the date header. */
   function placeTask(
     taskId: string | undefined,
     start: string,
     allDay: boolean,
-    pointer: MouseEvent | KeyboardEvent | null,
   ) {
     const task = taskId ? tasksById.get(taskId) : undefined;
-    const surface = host.current;
-    if (!task || !surface) return;
-    const bounds = surface.getBoundingClientRect();
-    const inside =
-      pointer &&
-      "clientX" in pointer &&
-      pointer.clientX >= bounds.left + labelWidth &&
-      pointer.clientX < bounds.right &&
-      pointer.clientY >= bounds.top &&
-      pointer.clientY < bounds.bottom;
-    if (!inside) {
-      showMessage(
-        {
-          tone: "neutral",
-          text: "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
-        },
-        4_500,
-      );
-      return;
-    }
-    void commitSchedule(task, placedSchedule(start, allDay));
+    if (task) void commitSchedule(task, placedSchedule(start, allDay));
   }
 
   function itemLabel(task: PlannerTask): string {
@@ -416,7 +392,7 @@ function GanttTimeline({
           ? "15 minutes"
           : "one hour"
         : "one day";
-    return `${task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${step}; Alt plus Shift plus arrow keys change the end.`;
+    return `${task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${step}.`;
   }
 
   const options: Partial<CalendarOptions<PlacementData>> = {
@@ -428,6 +404,7 @@ function GanttTimeline({
     editable: !mutationsDisabled,
     selectable: false,
     navLinks: false,
+    selected: selectedId,
     timeline: {
       rows: timelineRows,
       rowOf: (item) => item.id,
@@ -437,17 +414,35 @@ function GanttTimeline({
       labelWidth,
       rowHeight,
       dependencies: true,
-      rowContent: (row, element) => {
-        element.classList.add("gantt-ledger-host");
+      todayLabel: scale.intraday ? "Now" : "Today",
+      rowLabelDidMount: ({ row, el }) => {
+        el.classList.add("gantt-ledger-host");
         setLabelHosts((current) =>
-          current.get(row.id) === element
+          current.get(row.id) === el
             ? current
-            : new Map(current).set(row.id, element),
+            : new Map(current).set(row.id, el),
         );
       },
+      rowLabelWillUnmount: ({ row, el }) =>
+        setLabelHosts((current) => {
+          if (current.get(row.id) !== el) return current;
+          const next = new Map(current);
+          next.delete(row.id);
+          return next;
+        }),
+      resizeHandleLabel: mutationsDisabled
+        ? undefined
+        : ({ item, edge }) =>
+            `Change ${item.title} ${edge === "start" ? "scheduled" : "due"} date`,
       onLink: mutationsDisabled
         ? undefined
-        : ({ from, to }) => linkTasks(from.id, to.id),
+        : ({ from, to, fromEdge, toEdge }) =>
+            linkTasks(from.id, to.id, fromEdge, toEdge),
+      canLink: ({ from, to }) => {
+        const allowed = canAddDependency(allTasks, from.id, to.id);
+        return allowed.allowed || allowed.reason;
+      },
+      onLinkDrag: showLinkDrag,
     },
     onItemClick: ({ item }) => {
       const task = tasksById.get(item.id);
@@ -462,12 +457,21 @@ function GanttTimeline({
           : "resize-finish",
       ),
     onExternalDrop: (arg) =>
-      placeTask(arg.source?.data, arg.startStr, arg.allDay, arg.jsEvent),
+      placeTask(arg.source?.data, arg.startStr, arg.allDay),
+    onExternalDragEnd: ({ dropped }) => {
+      if (!dropped)
+        showMessage(
+          {
+            tone: "neutral",
+            text: "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+          },
+          4_500,
+        );
+    },
     itemDidMount: ({ item, el, isMirror }) => {
       const task = tasksById.get(item.id);
       if (!task || isMirror) return;
       el.setAttribute("aria-label", itemLabel(task));
-      el.classList.toggle("is-selected", item.id === selectedId);
     },
   };
 
@@ -498,7 +502,6 @@ function GanttTimeline({
       surface.removeEventListener("wheel", wheel);
       calendar.destroy();
       calendarRef.current = null;
-      previousScale.current = null;
       lastTodayRequest.current = null;
     };
   }, []);
@@ -507,76 +510,30 @@ function GanttTimeline({
     const calendar = calendarRef.current;
     const surface = host.current;
     if (!calendar || !surface) return;
-    const scroll = calendar.getScroll();
-    const previous = previousScale.current;
-    let anchor = pendingZoomAnchor.current;
+    // The calendar keeps the visible dates when the scale or range changes;
+    // a wheel zoom keeps the date under the pointer instead.
+    const anchor = pendingZoomAnchor.current;
     pendingZoomAnchor.current = null;
-    const rescaled =
-      previous &&
-      (previous.scale.start !== scale.start ||
-        previous.scale.cellWidth !== scale.cellWidth ||
-        previous.labelWidth !== labelWidth);
-    if (rescaled && !anchor) {
-      const viewportX =
-        previous.labelWidth + (surface.clientWidth - previous.labelWidth) / 2;
-      anchor = {
-        viewportX,
-        minute:
-          planningMinute(previous.scale.start)! +
-          ((scroll.left + viewportX - previous.labelWidth) /
-            previous.scale.cellWidth) *
-            DAY_MINUTES,
-      };
-    }
-    previousScale.current = { scale, labelWidth };
-
-    calendar.setOptions(options);
+    calendar.setOptions(options, anchor ? { anchor } : undefined);
     calendar.setItems(items);
     calendar.flush();
 
-    const startMinute = planningMinute(scale.start)!;
-    const xOf = (minute: number) =>
-      labelWidth + ((minute - startMinute) / DAY_MINUTES) * scale.cellWidth;
-    if (rescaled && anchor)
-      calendar.setScroll({
-        top: scroll.top,
-        left: Math.max(0, xOf(anchor.minute) - anchor.viewportX),
-      });
     if (lastTodayRequest.current !== todayRequest) {
+      const first = lastTodayRequest.current === null;
       lastTodayRequest.current = todayRequest;
-      const now = new Date();
-      const todayMinute = scale.intraday
-        ? planningMinute(today)! + now.getHours() * 60 + now.getMinutes()
-        : planningMinute(today)!;
-      calendar.setScroll({
-        top: calendar.getScroll().top,
-        left: Math.max(
-          0,
-          xOf(todayMinute) -
-            (labelWidth + (surface.clientWidth - labelWidth) / 2),
-        ),
+      calendar.scrollToDate(scale.intraday ? new Date() : today, {
+        align: "center",
+        smooth: !first && todayRequest > 0,
       });
     }
-
-    for (const element of surface.querySelectorAll(".tnc-item.is-selected"))
-      element.classList.remove("is-selected");
-    if (selectedId)
-      for (const element of calendar.elementsFor(selectedId))
-        element.classList.add("is-selected");
 
     wheelHandler.current = (event) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       if (event.deltaY === 0) return;
       const bounds = surface.getBoundingClientRect();
-      const viewportX = Math.max(labelWidth, event.clientX - bounds.left);
       pendingZoomAnchor.current = {
-        viewportX,
-        minute:
-          startMinute +
-          ((calendar.getScroll().left + viewportX - labelWidth) /
-            scale.cellWidth) *
-            DAY_MINUTES,
+        clientX: Math.max(bounds.left + labelWidth, event.clientX),
       };
       onZoom(event.deltaY < 0 ? 1 : -1);
     };
@@ -607,9 +564,7 @@ function GanttTimeline({
               task={row.task}
               onBeginPlacement={beginPlacement}
               onCompletionChange={commitCompletion}
-              onSelect={(task) => {
-                if (!placementClick.current) onSelect(task);
-              }}
+              onSelect={onSelect}
             />
           ),
           element,
@@ -730,8 +685,8 @@ function TaskLedger({
   );
 }
 
-/** The calendar scale whose day width equals Planner's authored cell width. */
-function calendarScale(scale: TimelineScale): CalendarTimelineScale {
+/** Planner's authored cell width as the calendar's day width; the unit picks header ticks. */
+function calendarScale(scale: TimelineScale): Partial<CalendarTimelineScale> {
   const unit: CalendarTimelineScale["unit"] = scale.intraday
     ? "hour"
     : scale.cellWidth >= 22
@@ -741,11 +696,7 @@ function calendarScale(scale: TimelineScale): CalendarTimelineScale {
         : scale.cellWidth >= 6
           ? "month"
           : "quarter";
-  return {
-    unit,
-    unitWidth: scale.cellWidth * UNIT_DAYS[unit],
-    snapMinutes: scale.snapMinutes,
-  };
+  return { unit, dayWidth: scale.cellWidth, snapMinutes: scale.snapMinutes };
 }
 
 function labelWidthOf(surface: HTMLElement): number {

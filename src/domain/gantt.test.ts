@@ -15,6 +15,7 @@ import {
   taskTimelineItem,
   taskTimelineSpan,
   taskSpan,
+  timelineDependencies,
   timelineScale,
 } from "./gantt";
 
@@ -311,5 +312,24 @@ describe("timeline items", () => {
       scheduled: "2026-08-17T10:15:00",
       due: undefined,
     });
+  });
+});
+
+describe("timelineDependencies", () => {
+  it("keeps each relationship's type so start-to-start is not read as finish-to-start", () => {
+    const copy = task({ id: "copy", path: "tasks/Copy.md" });
+    const prototype = task({ id: "prototype", path: "tasks/Prototype.md" });
+    const qa = task({
+      id: "qa",
+      blockedBy: [
+        { uid: "prototype", reltype: "FINISHTOSTART" },
+        { uid: "tasks/Copy.md", reltype: "STARTTOSTART" },
+        { uid: "tasks/missing.md", reltype: "FINISHTOFINISH" },
+      ],
+    });
+    expect(timelineDependencies(qa, [copy, prototype, qa])).toEqual([
+      { id: "prototype", type: "FS" },
+      { id: "copy", type: "SS" },
+    ]);
   });
 });

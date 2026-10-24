@@ -28,6 +28,23 @@ beforeEach(() => {
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   HTMLElement.prototype.scrollTo = vi.fn();
+  // jsdom has no layout; give the calendar's scroller a viewport so its hit
+  // testing (which ignores points outside the chart) has bounds.
+  const rect = Element.prototype.getBoundingClientRect;
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      return this.classList.contains("tnc-tl-scroll")
+        ? ({
+            left: 0,
+            top: 0,
+            right: 1200,
+            bottom: 900,
+            width: 1200,
+            height: 900,
+          } as DOMRect)
+        : rect.call(this);
+    },
+  );
 });
 
 function renderChart(
@@ -257,11 +274,11 @@ describe("GanttChart interactions", () => {
     const { onDependenciesChange } = renderChart([source, target]);
     Object.defineProperty(document, "elementFromPoint", {
       configurable: true,
-      value: vi.fn(() => bar("target")),
+      value: vi.fn(() => bar("target").querySelector(".tnc-port-start")),
     });
 
     drag(
-      bar("source").querySelector(".tnc-port")!,
+      bar("source").querySelector(".tnc-port-finish")!,
       { x: 600, y: TASK_ROW_Y },
       { x: 650, y: TASK_ROW_Y + 49 },
     );
@@ -280,17 +297,6 @@ describe("GanttChart interactions", () => {
     async ({ clientX, saves }) => {
       const task = makeTask({ id: "title-drag", title: "Unscheduled title" });
       const { onScheduleChange, onSelect } = renderChart([task]);
-      vi.spyOn(
-        document.querySelector<HTMLElement>(".gantt-scroll")!,
-        "getBoundingClientRect",
-      ).mockReturnValue({
-        left: 0,
-        top: 0,
-        right: 1200,
-        bottom: 900,
-        width: 1200,
-        height: 900,
-      } as DOMRect);
       const title = screen.getByRole("button", {
         name: /Unscheduled title, not scheduled. Select to edit or drag/,
       });

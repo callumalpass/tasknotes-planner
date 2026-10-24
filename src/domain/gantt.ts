@@ -634,14 +634,36 @@ export function placedSchedule(start: string, allDay: boolean): ScheduleUpdate {
   };
 }
 
-/** Ids of the tasks a task is blocked by, resolved against `tasks`. */
-export function dependencyTaskIds(
+export type TimelineDependencyType = "FS" | "SS" | "FF" | "SF";
+
+const TIMELINE_DEPENDENCY_TYPES: Record<
+  TaskDependencyRelType,
+  TimelineDependencyType
+> = {
+  FINISHTOSTART: "FS",
+  STARTTOSTART: "SS",
+  FINISHTOFINISH: "FF",
+  STARTTOFINISH: "SF",
+};
+
+/**
+ * The tasks a task is blocked by, resolved against `tasks`, with each
+ * relationship as a timeline dependency type.
+ */
+export function timelineDependencies(
   task: PlannerTask,
   tasks: readonly PlannerTask[],
-): string[] {
+): { id: string; type: TimelineDependencyType }[] {
   return task.blockedBy.flatMap((dependency) => {
     const source = resolveDependencyTask(tasks, dependency.uid);
-    return source && source.id !== task.id ? [source.id] : [];
+    return source && source.id !== task.id
+      ? [
+          {
+            id: source.id,
+            type: TIMELINE_DEPENDENCY_TYPES[dependency.reltype] ?? "FS",
+          },
+        ]
+      : [];
   });
 }
 
