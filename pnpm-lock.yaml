@@ -26,6 +26,9 @@ importers:
       "@mdbase-dev/ui":
         specifier: file:vendor/ui-dev-9553ad66.tgz
         version: file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-0ecbef41.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      "@tasknotes/calendar":
+        specifier: file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz
+        version: file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz(react@19.2.8)
       "@tasknotes/model":
         specifier: file:vendor/tasknotes-model-0.3.0-rc.15.tgz
         version: file:vendor/tasknotes-model-0.3.0-rc.15.tgz
@@ -731,6 +734,15 @@ packages:
       {
         integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==,
       }
+
+  '@tasknotes/calendar@file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz':
+    resolution: {integrity: sha512-CJhkbTyJpbDbfA5Xubp/LrBUa+6xKiHxULFy3SHvVFjuud0y8zcPh5sfeNHlZPE26/0kAlFrb9Sw1HtDBhBWkA==, tarball: file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz}
+    version: 0.1.0-dev.0
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   "@tasknotes/model@file:vendor/tasknotes-model-0.3.0-rc.15.tgz":
     resolution:
@@ -2693,6 +2705,10 @@ snapshots:
   "@rolldown/pluginutils@1.0.1": {}
 
   "@standard-schema/spec@1.1.0": {}
+
+  '@tasknotes/calendar@file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz(react@19.2.8)':
+    optionalDependencies:
+      react: 19.2.8
 
   "@tasknotes/model@file:vendor/tasknotes-model-0.3.0-rc.15.tgz":
     dependencies:

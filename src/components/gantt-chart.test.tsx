@@ -30,61 +30,92 @@ beforeEach(() => {
   HTMLElement.prototype.scrollTo = vi.fn();
 });
 
+function renderChart(
+  tasks: PlannerTask[],
+  overrides: Partial<Parameters<typeof GanttChart>[0]> = {},
+) {
+  const props = {
+    allTasks: tasks,
+    tasks,
+    selectedId: null,
+    todayRequest: 0,
+    zoom: 3,
+    onSelect: vi.fn(),
+    onZoom: vi.fn(),
+    onScheduleChange: vi.fn().mockResolvedValue(undefined),
+    onDependenciesChange: vi.fn().mockResolvedValue(undefined),
+    onCompletionChange: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+  const view = render(<GanttChart {...props} />);
+  return { ...props, view };
+}
+
+/** The calendar rows start at y = 0 in jsdom; row 0 is the project group. */
+const TASK_ROW_Y = 49 + 10;
+
+function bar(id: string) {
+  return document.querySelector<HTMLElement>(`.tnc-item[data-id="${id}"]`)!;
+}
+
+function drag(
+  element: Element,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  fireEvent.pointerDown(element, {
+    button: 0,
+    clientX: from.x,
+    clientY: from.y,
+    pointerId: 1,
+  });
+  for (const step of [0.5, 1])
+    fireEvent.pointerMove(document, {
+      clientX: from.x + (to.x - from.x) * step,
+      clientY: from.y + (to.y - from.y) * step,
+      pointerId: 1,
+    });
+  fireEvent.pointerUp(document, {
+    clientX: to.x,
+    clientY: to.y,
+    pointerId: 1,
+  });
+}
+
 describe("GanttChart interactions", () => {
-  it("uses the responsive row height for ledger rows, timeline body and dependency endpoints", () => {
-    const readStyle = getComputedStyle;
-    const styleSpy = vi
-      .spyOn(globalThis, "getComputedStyle")
-      .mockImplementation((element) => {
-        const style = readStyle(element);
-        const readProperty = style.getPropertyValue.bind(style);
-        style.getPropertyValue = (name) =>
-          name === "--task-row-height" ? "65px" : readProperty(name);
-        return style;
-      });
-    try {
-      const first = makeTask({
-        id: "first",
-        scheduled: "2026-08-17",
-        due: "2026-08-18",
-      });
-      const second = makeTask({
-        id: "second",
-        scheduled: "2026-08-19",
-        due: "2026-08-20",
-        blockedBy: [{ uid: "first", reltype: "FINISHTOSTART" }],
-      });
-      const tasks = [first, second];
-      const view = render(
-        <GanttChart
-          allTasks={tasks}
-          tasks={tasks}
-          selectedId={null}
-          todayRequest={0}
-          zoom={3}
-          onSelect={() => undefined}
-          onZoom={() => undefined}
-          onScheduleChange={vi.fn().mockResolvedValue(undefined)}
-          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        />,
-      );
-      for (const row of view.container.querySelectorAll(".task-row")) {
-        expect(row).toHaveStyle({ height: "65px" });
-      }
-      expect(view.container.querySelector(".gantt-body")).toHaveStyle({
-        height: "165px",
-      });
-      expect(view.container.querySelector(".dependency-layer")).toHaveAttribute(
-        "height",
-        "165",
-      );
-      const path = view.container.querySelector(".dependency-layer > path");
-      expect(path?.getAttribute("d")).toContain("67.5");
-      expect(path?.getAttribute("d")).toContain("132.5");
-    } finally {
-      styleSpy.mockRestore();
-    }
+  it("draws grouped rows, inclusive due bars, milestones and dependency arrows", () => {
+    const first = makeTask({
+      id: "first",
+      title: "First",
+      projects: ["[[Launch]]"],
+      scheduled: "2026-08-17",
+      due: "2026-08-18",
+    });
+    const second = makeTask({
+      id: "second",
+      title: "Second",
+      projects: ["[[Launch]]"],
+      due: "2026-08-20",
+      blockedBy: [{ uid: "tasks/first.md", reltype: "FINISHTOSTART" }],
+    });
+    renderChart([first, second]);
+
+    const rows = [...document.querySelectorAll(".tnc-tl-row")];
+    expect(rows.map((row) => row.getAttribute("data-row"))).toEqual([
+      "project:launch",
+      "first",
+      "second",
+    ]);
+    expect(rows[0]).toHaveClass("is-group");
+    expect(rows[0]).toHaveTextContent("Launch2");
+    expect(bar("first")).toHaveAccessibleName(/^First, Aug 17 — Aug 18\./);
+    expect(bar("first").style.width).toBe("30px");
+    expect(bar("second")).toHaveClass("is-milestone");
+    expect(
+      document.querySelector(
+        '.tnc-tl-deps path[data-from="first"][data-to="second"]',
+      ),
+    ).not.toBeNull();
   });
 
   it("flags imported reversed dates without presenting them as a valid range", () => {
@@ -95,342 +126,122 @@ describe("GanttChart interactions", () => {
         due: "2026-10-29",
       }),
     );
-    const onSelect = vi.fn();
-    const onScheduleChange = vi.fn();
-    const view = render(
-      <GanttChart
-        allTasks={[task]}
-        tasks={[task]}
-        selectedId={null}
-        todayRequest={0}
-        zoom={3}
-        onSelect={onSelect}
-        onZoom={vi.fn()}
-        onScheduleChange={onScheduleChange}
-        onDependenciesChange={vi.fn()}
-        onCompletionChange={vi.fn()}
-      />,
-    );
+    const { onSelect, onScheduleChange } = renderChart([task]);
     const warning = screen.getByText("Scheduled after due");
     expect(warning).toHaveAttribute(
       "title",
       "Scheduled Nov 2; due Oct 29. Scheduled is after the due date",
     );
     expect(screen.queryByText("Nov 2 — Oct 29")).not.toBeInTheDocument();
-    const ledger = view.container.querySelector(".task-ledger-main")!;
+    const ledger = document.querySelector(".task-ledger-main")!;
     expect(ledger).toHaveAccessibleName(
       /Imported inversion, Scheduled Nov 2; due Oct 29.*Scheduled is after the due date/,
     );
-    expect(view.container.querySelector(".task-bar-main")).toHaveAccessibleName(
-      /Scheduled is after the due date/,
-    );
+    expect(bar("task")).toHaveAccessibleName(/Scheduled is after the due date/);
     fireEvent.click(ledger);
     expect(onSelect).toHaveBeenCalledWith(task);
     expect(onScheduleChange).not.toHaveBeenCalled();
-    expect(task.scheduled).toBe("2026-11-02");
-    expect(task.due).toBe("2026-10-29");
   });
 
-  it("gates timeline writes while keeping task selection available", async () => {
+  it("gates timeline writes while keeping task selection available", () => {
     const task = makeTask({
       id: "blocked",
       title: "Blocked task",
       scheduled: "2026-08-17",
       due: "2026-08-18",
     });
-    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
-    const onDependenciesChange = vi.fn().mockResolvedValue(undefined);
-    const onCompletionChange = vi.fn().mockResolvedValue(undefined);
-    const onSelect = vi.fn();
-    render(
-      <GanttChart
-        allTasks={[task]}
-        mutationsDisabled
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={onDependenciesChange}
-        onCompletionChange={onCompletionChange}
-        onScheduleChange={onScheduleChange}
-        onSelect={onSelect}
-        onZoom={() => undefined}
-      />,
+    const { onSelect, onScheduleChange, onCompletionChange } = renderChart(
+      [task],
+      { mutationsDisabled: true },
     );
 
     expect(
       screen.getByRole("button", { name: "Complete Blocked task" }),
     ).toBeDisabled();
-    expect(
-      screen.getByRole("button", {
-        name: "Change Blocked task scheduled date",
-      }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", {
-        name: "Finish relationship handle for Blocked task",
-      }),
-    ).toBeDisabled();
+    expect(bar("blocked")).not.toHaveClass("is-draggable");
+    expect(bar("blocked").querySelector(".tnc-port, .tnc-resize")).toBeNull();
 
-    fireEvent.click(document.querySelector(".task-ledger-main")!);
-    fireEvent.keyDown(document.querySelector(".task-bar-main")!, {
-      altKey: true,
-      key: "ArrowRight",
-    });
-
+    fireEvent.keyDown(bar("blocked"), { altKey: true, key: "ArrowRight" });
+    fireEvent.click(bar("blocked"));
     expect(onSelect).toHaveBeenCalledWith(task);
     expect(onScheduleChange).not.toHaveBeenCalled();
-    expect(onDependenciesChange).not.toHaveBeenCalled();
     expect(onCompletionChange).not.toHaveBeenCalled();
   });
 
-  it("uses Ctrl+wheel for chart zoom without allowing Chrome page zoom", () => {
-    const task = makeTask({
-      id: "zoomable",
-      title: "Zoomable task",
-      scheduled: "2026-08-17",
-      due: "2026-08-18",
-    });
-    const onZoom = vi.fn();
-    const addEventListener = vi.spyOn(
-      HTMLElement.prototype,
-      "addEventListener",
-    );
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
-        onSelect={() => undefined}
-        onZoom={onZoom}
-      />,
-    );
-
-    expect(addEventListener).toHaveBeenCalledWith(
-      "wheel",
-      expect.any(Function),
-      {
-        passive: false,
-      },
-    );
-
+  it("zooms with Ctrl+wheel inside the chart and leaves plain wheel scrolling alone", () => {
+    const task = makeTask({ id: "zoomable", scheduled: "2026-08-17" });
+    const { onZoom } = renderChart([task]);
     const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
-    const event = new WheelEvent("wheel", {
+
+    const plain = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 100,
+    });
+    surface.querySelector(".tnc-tl-scroll")!.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(false);
+    expect(onZoom).not.toHaveBeenCalled();
+
+    const zoom = new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
       clientX: 600,
       ctrlKey: true,
       deltaY: -100,
     });
-    surface.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(true);
+    surface.querySelector(".tnc-tl-scroll")!.dispatchEvent(zoom);
+    expect(zoom.defaultPrevented).toBe(true);
     expect(onZoom).toHaveBeenCalledWith(1);
   });
 
-  it("leaves ordinary chart scrolling to the browser", () => {
-    const task = makeTask({ id: "scrollable", title: "Scrollable task" });
-    const onZoom = vi.fn();
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
-        onSelect={() => undefined}
-        onZoom={onZoom}
-      />,
-    );
-
-    const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
-    const event = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaY: 100,
+  it("moves timed tasks in quarter-hour increments and keeps their stored form", async () => {
+    const task = makeTask({
+      id: "timed",
+      title: "Timed task",
+      scheduled: "2026-08-17T09:30:00",
+      due: "2026-08-17T10:30:00Z",
     });
-    surface.dispatchEvent(event);
+    const { onScheduleChange } = renderChart([task], { zoom: 7 });
 
-    expect(event.defaultPrevented).toBe(false);
-    expect(onZoom).not.toHaveBeenCalled();
+    // 576px per day: 24px is one hour.
+    drag(bar("timed"), { x: 600, y: TASK_ROW_Y }, { x: 624, y: TASK_ROW_Y });
+
+    await waitFor(() =>
+      expect(onScheduleChange).toHaveBeenCalledWith(task, {
+        scheduled: "2026-08-17T10:30:00",
+        due: "2026-08-17T11:30:00Z",
+      }),
+    );
   });
 
-  it.each([
-    { target: "date header", clientX: 420, clientY: 50, saves: true },
-    { target: "task ledger", clientX: 120, clientY: 250, saves: false },
-    { target: "toolbar", clientX: 420, clientY: -10, saves: false },
-  ])(
-    "handles unscheduled title drops over the $target",
-    async ({ clientX, clientY, saves }) => {
-      const task = makeTask({ id: "title-drag", title: "Unscheduled title" });
-      const onScheduleChange = vi.fn().mockResolvedValue(undefined);
-      const onSelect = vi.fn();
-      render(
-        <GanttChart
-          allTasks={[task]}
-          selectedId={null}
-          tasks={[task]}
-          todayRequest={0}
-          zoom={3}
-          onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-          onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-          onScheduleChange={onScheduleChange}
-          onSelect={onSelect}
-          onZoom={() => undefined}
-        />,
-      );
-      const surface = document.querySelector<HTMLElement>(".gantt-scroll")!;
-      vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
-        left: 0,
-        top: 0,
-        right: 1200,
-        bottom: 900,
-        width: 1200,
-        height: 900,
-      } as DOMRect);
-      vi.spyOn(
-        document.querySelector<HTMLElement>(".timeline-row")!,
-        "getBoundingClientRect",
-      ).mockReturnValue({ left: 350 } as DOMRect);
-      const title = screen.getByRole("button", {
-        name: /Unscheduled title, not scheduled. Select to edit or drag/,
-      });
-      fireEvent.pointerDown(title, {
-        button: 0,
-        clientX: 160,
-        clientY: 250,
-        pointerId: 1,
-      });
-      fireEvent.pointerMove(window, { clientX, clientY, pointerId: 1 });
-      fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
-      fireEvent.click(title);
-      expect(onSelect).not.toHaveBeenCalled();
-      if (saves) {
-        await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
-        expect(onScheduleChange.mock.calls[0]).toEqual([
-          task,
-          {
-            due: undefined,
-            scheduled: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-          },
-        ]);
-      } else {
-        expect(onScheduleChange).not.toHaveBeenCalled();
-        expect(screen.getByRole("status")).toHaveTextContent(
-          "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
-        );
-      }
-    },
-  );
-
-  it("keeps an unscheduled title click as task selection", () => {
-    const task = makeTask({ id: "title-click", title: "Unscheduled title" });
-    const onScheduleChange = vi.fn();
-    const onSelect = vi.fn();
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={vi.fn()}
-        onCompletionChange={vi.fn()}
-        onScheduleChange={onScheduleChange}
-        onSelect={onSelect}
-        onZoom={() => undefined}
-      />,
-    );
-    const title = screen.getByRole("button", {
-      name: /Unscheduled title, not scheduled/,
+  it("resizes an all-day finish to an inclusive due date", async () => {
+    const task = makeTask({
+      id: "span",
+      scheduled: "2026-08-17",
+      due: "2026-08-18",
     });
-    fireEvent.pointerDown(title, { button: 0, clientX: 160, pointerId: 1 });
-    fireEvent.pointerUp(window, { clientX: 160, pointerId: 1 });
-    fireEvent.click(title);
-    expect(onSelect).toHaveBeenCalledWith(task);
-    expect(onScheduleChange).not.toHaveBeenCalled();
-  });
+    const { onScheduleChange } = renderChart([task], { zoom: 5 });
 
-  it("places an unscheduled task on the timeline by dragging", async () => {
-    const task = makeTask({ id: "unscheduled", title: "Unscheduled" });
-    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={onScheduleChange}
-        onSelect={() => undefined}
-        onZoom={() => undefined}
-      />,
+    // 34px per day: drag the finish grip two days later.
+    const finish =
+      350 +
+      parseFloat(bar("span").style.left) +
+      parseFloat(bar("span").style.width);
+    drag(
+      bar("span").querySelector(".tnc-resize-end")!,
+      { x: finish, y: TASK_ROW_Y },
+      { x: finish + 68, y: TASK_ROW_Y },
     );
 
-    const handle = screen.getByRole("button", { name: "Drag to schedule" });
-    fireEvent.pointerDown(handle, {
-      button: 0,
-      clientX: 360,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(handle, { clientX: 420, pointerId: 1 });
-    fireEvent.pointerUp(handle, { clientX: 420, pointerId: 1 });
-
-    await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
-    expect(onScheduleChange.mock.calls[0][0]).toBe(task);
-    expect(onScheduleChange.mock.calls[0][1]).toEqual({
-      due: undefined,
-      scheduled: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-    });
-  });
-
-  it("places unscheduled work at an explicit intraday time", async () => {
-    const task = makeTask({ id: "intraday", title: "Intraday" });
-    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={7}
-        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={onScheduleChange}
-        onSelect={() => undefined}
-        onZoom={() => undefined}
-      />,
+    await waitFor(() =>
+      expect(onScheduleChange).toHaveBeenCalledWith(task, {
+        scheduled: "2026-08-17",
+        due: "2026-08-20",
+      }),
     );
-
-    const handle = screen.getByRole("button", { name: "Drag to schedule" });
-    fireEvent.pointerDown(handle, {
-      button: 0,
-      clientX: 360,
-      pointerId: 4,
-    });
-    fireEvent.pointerMove(handle, { clientX: 420, pointerId: 4 });
-    fireEvent.pointerUp(handle, { clientX: 420, pointerId: 4 });
-
-    await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
-    expect(onScheduleChange.mock.calls[0][1]).toEqual({
-      due: undefined,
-      scheduled: expect.stringMatching(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:(00|15|30|45):00$/,
-      ),
-    });
   });
 
-  it("draws an edge relationship and stores it on the target", async () => {
+  it("creates a finish-to-start relationship by linking two bars", async () => {
     const source = makeTask({
       id: "source",
       title: "Source",
@@ -443,49 +254,17 @@ describe("GanttChart interactions", () => {
       scheduled: "2026-08-20",
       due: "2026-08-22",
     });
-    const onDependenciesChange = vi.fn().mockResolvedValue(undefined);
-    render(
-      <GanttChart
-        allTasks={[source, target]}
-        selectedId={null}
-        tasks={[source, target]}
-        todayRequest={0}
-        zoom={3}
-        onDependenciesChange={onDependenciesChange}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={vi.fn().mockResolvedValue(undefined)}
-        onSelect={() => undefined}
-        onZoom={() => undefined}
-      />,
-    );
-
-    const sourceHandle = screen.getByRole("button", {
-      name: "Finish relationship handle for Source",
-    });
-    const targetHandle = screen.getByRole("button", {
-      name: "Start relationship handle for Target",
-    });
+    const { onDependenciesChange } = renderChart([source, target]);
     Object.defineProperty(document, "elementFromPoint", {
       configurable: true,
-      value: vi.fn(() => targetHandle),
+      value: vi.fn(() => bar("target")),
     });
 
-    fireEvent.pointerDown(sourceHandle, {
-      button: 0,
-      clientX: 600,
-      clientY: 100,
-      pointerId: 2,
-    });
-    fireEvent.pointerMove(sourceHandle, {
-      clientX: 650,
-      clientY: 150,
-      pointerId: 2,
-    });
-    fireEvent.pointerUp(sourceHandle, {
-      clientX: 650,
-      clientY: 150,
-      pointerId: 2,
-    });
+    drag(
+      bar("source").querySelector(".tnc-port")!,
+      { x: 600, y: TASK_ROW_Y },
+      { x: 650, y: TASK_ROW_Y + 49 },
+    );
 
     await waitFor(() => expect(onDependenciesChange).toHaveBeenCalledOnce());
     expect(onDependenciesChange).toHaveBeenCalledWith(target, [
@@ -493,44 +272,57 @@ describe("GanttChart interactions", () => {
     ]);
   });
 
-  it("moves timed tasks in quarter-hour increments at the closest scale", async () => {
-    const task = makeTask({
-      id: "timed",
-      title: "Timed task",
-      scheduled: "2026-08-17T09:30:00",
-      due: "2026-08-17T10:30:00",
-    });
-    const onScheduleChange = vi.fn().mockResolvedValue(undefined);
-    render(
-      <GanttChart
-        allTasks={[task]}
-        selectedId={null}
-        tasks={[task]}
-        todayRequest={0}
-        zoom={7}
-        onDependenciesChange={vi.fn().mockResolvedValue(undefined)}
-        onCompletionChange={vi.fn().mockResolvedValue(undefined)}
-        onScheduleChange={onScheduleChange}
-        onSelect={() => undefined}
-        onZoom={() => undefined}
-      />,
-    );
+  it.each([
+    { target: "timeline", clientX: 420, saves: true },
+    { target: "task ledger", clientX: 120, saves: false },
+  ])(
+    "handles unscheduled title drops over the $target",
+    async ({ clientX, saves }) => {
+      const task = makeTask({ id: "title-drag", title: "Unscheduled title" });
+      const { onScheduleChange, onSelect } = renderChart([task]);
+      vi.spyOn(
+        document.querySelector<HTMLElement>(".gantt-scroll")!,
+        "getBoundingClientRect",
+      ).mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 1200,
+        bottom: 900,
+        width: 1200,
+        height: 900,
+      } as DOMRect);
+      const title = screen.getByRole("button", {
+        name: /Unscheduled title, not scheduled. Select to edit or drag/,
+      });
+      drag(title, { x: 160, y: TASK_ROW_Y }, { x: clientX, y: TASK_ROW_Y });
+      fireEvent.click(title);
+      expect(onSelect).not.toHaveBeenCalled();
+      if (saves) {
+        await waitFor(() => expect(onScheduleChange).toHaveBeenCalledOnce());
+        expect(onScheduleChange).toHaveBeenCalledWith(task, {
+          due: undefined,
+          scheduled: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        });
+      } else {
+        expect(onScheduleChange).not.toHaveBeenCalled();
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Schedule unchanged. Drop over a date in the timeline to schedule this task.",
+        );
+      }
+    },
+  );
 
-    const bar = screen.getByRole("button", { name: /Timed task, .*09:30/ });
-    fireEvent.pointerDown(bar, {
-      button: 0,
-      clientX: 600,
-      pointerId: 3,
+  it("keeps an unscheduled title click as task selection", () => {
+    const task = makeTask({ id: "title-click", title: "Unscheduled title" });
+    const { onSelect, onScheduleChange } = renderChart([task]);
+    const title = screen.getByRole("button", {
+      name: /Unscheduled title, not scheduled/,
     });
-    fireEvent.pointerMove(bar, { clientX: 624, pointerId: 3 });
-    fireEvent.pointerUp(bar, { clientX: 624, pointerId: 3 });
-
-    await waitFor(() =>
-      expect(onScheduleChange).toHaveBeenCalledWith(task, {
-        scheduled: "2026-08-17T10:30:00",
-        due: "2026-08-17T11:30:00",
-      }),
-    );
+    fireEvent.pointerDown(title, { button: 0, clientX: 160, pointerId: 1 });
+    fireEvent.pointerUp(document, { clientX: 160, pointerId: 1 });
+    fireEvent.click(title);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onScheduleChange).not.toHaveBeenCalled();
   });
 
   it("completes a task without opening its inspector", async () => {

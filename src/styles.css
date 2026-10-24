@@ -665,9 +665,29 @@ select:focus-visible {
   font-size: 14px;
 }
 
-/* Gantt */
+/* Gantt: @tasknotes/calendar timeline drawn with Planner's tokens. */
 .gantt-frame {
+  --tnc-theme-bg: var(--paper);
+  --tnc-theme-bg-2: var(--paper-soft);
+  --tnc-theme-bg-3: var(--accent-soft);
+  --tnc-theme-line: var(--line);
+  --tnc-theme-line-strong: var(--line-strong);
+  --tnc-theme-text: var(--ink);
+  --tnc-theme-muted: var(--ink-muted);
+  --tnc-theme-faint: var(--ink-muted);
+  --tnc-theme-accent: var(--accent);
+  --tnc-theme-accent-text: var(--paper);
+  --tnc-theme-now: var(--danger);
+  --tnc-theme-warn: var(--danger);
+  --tnc-theme-ok: var(--success);
+  --tnc-theme-amber: var(--danger);
+  --tnc-shadow: var(--shadow);
+  --tnc-radius: 4px;
+  --tnc-font-size: 12px;
+  --tnc-small: 11px;
   position: relative;
+  /* Keep the calendar's sticky layers below the inspector and dialogs. */
+  isolation: isolate;
   min-height: 0;
   flex: 1;
   background: var(--paper);
@@ -676,152 +696,64 @@ select:focus-visible {
 .gantt-scroll {
   width: 100%;
   height: 100%;
-  overflow: auto;
-  overscroll-behavior: contain;
+}
+
+.gantt-scroll .tnc-tl-scroll {
   scrollbar-color: var(--line-strong) var(--paper-soft);
 }
 
-.gantt-canvas {
-  --task-column: 350px;
-  --task-row-height: 49px;
-  position: relative;
-  min-width: 100%;
-}
-
-.gantt-corner {
-  position: sticky;
-  z-index: 8;
-  top: 0;
-  left: 0;
-  width: var(--task-column);
-  height: 64px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding: 0 14px 9px 20px;
-  border-right: 1px solid var(--line-strong);
-  border-bottom: 1px solid var(--line-strong);
+.gantt-scroll .tnc-tl-head,
+.gantt-scroll .tnc-tl-corner {
   background: var(--paper-soft);
-  color: var(--ink-muted);
   font-family: "Azeret Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
-.timeline-header {
-  position: sticky;
-  z-index: 6;
-  top: 0;
-  left: auto !important;
-  height: 64px;
-  margin-top: -64px;
-  margin-left: var(--task-column);
-  border-bottom: 1px solid var(--line-strong);
-  background: var(--paper-soft);
-}
-
-.month-row,
-.date-row {
-  position: relative;
-  height: 32px;
-}
-
-.month-row {
-  border-bottom: 1px solid var(--line);
-}
-
-.month-row span,
-.date-row span {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.date-row b {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  height: 100%;
-  padding: 9px 5px 0;
-  overflow: hidden;
-  color: var(--ink-muted);
-  font-family: "Azeret Mono", monospace;
-  font-size: 9px;
-  font-weight: 500;
-  text-align: left;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.month-row span {
-  padding: 9px 9px 0;
-  border-left: 1px solid var(--line-strong);
+.gantt-scroll .tnc-tl-tier--major .tnc-tl-tick {
   color: var(--ink-soft);
-  font-family: "Azeret Mono", monospace;
   font-size: 10px;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
-.date-row span {
-  padding-top: 9px;
-  border-left: 1px solid var(--line);
-  color: var(--ink-muted);
-  font-family: "Azeret Mono", monospace;
+.gantt-scroll .tnc-tl-tier--minor .tnc-tl-tick {
   font-size: 9px;
-  text-align: center;
 }
 
-.date-row .weekend {
-  background: var(--weekend);
+.gantt-scroll .tnc-tl-label {
+  padding: 0 !important;
+  border-right-color: var(--line-strong);
 }
 
-.timeline-header.is-intraday .day-band {
-  padding-top: 8px;
-  border-left-color: var(--line-strong);
+.gantt-scroll .tnc-item--timeline > .tnc-item-main {
+  border: 0;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.timeline-header.is-intraday .day-band.weekend {
-  background: var(--weekend);
+.gantt-scroll .tnc-item--timeline.is-selected > .tnc-item-main {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
-.hour-row span {
-  padding: 9px 0 0 5px;
-  border-left: 1px solid var(--line);
-  text-align: left;
+.gantt-scroll .tnc-item--timeline.is-completed {
+  opacity: 0.72;
 }
 
-.gantt-body {
-  position: relative;
+.gantt-scroll .tnc-tl-deps path {
+  stroke-width: 1.1;
 }
 
-.gantt-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--task-column) 1fr;
-}
-
-.task-ledger {
-  position: sticky;
-  z-index: 4;
-  left: 0;
+.task-ledger,
+.group-ledger {
+  width: 100%;
   min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
-  border: 0;
-  border-right: 1px solid var(--line-strong);
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
 }
 
-.task-row .task-ledger {
-  width: var(--task-column);
-}
-
-.task-row .task-ledger:hover,
-.task-row.is-selected .task-ledger {
+.task-ledger:hover,
+.task-ledger.is-selected {
   background: var(--accent-soft);
 }
 
@@ -948,280 +880,6 @@ select:focus-visible {
 
 .ledger-title .schedule-warning {
   color: var(--danger);
-}
-
-.timeline-row {
-  position: relative;
-  border-bottom: 1px solid var(--line);
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent 0,
-    transparent calc(var(--cell-width, 15px) - 1px),
-    var(--line) calc(var(--cell-width, 15px) - 1px),
-    var(--line) var(--cell-width, 15px)
-  );
-}
-
-.timeline-row.is-intraday {
-  background-image:
-    linear-gradient(
-      to right,
-      transparent 0,
-      transparent var(--workday-start),
-      color-mix(in srgb, var(--accent-soft) 45%, transparent)
-        var(--workday-start),
-      color-mix(in srgb, var(--accent-soft) 45%, transparent)
-        calc(var(--workday-start) + var(--workday-width)),
-      transparent calc(var(--workday-start) + var(--workday-width)),
-      transparent 100%
-    ),
-    repeating-linear-gradient(
-      to right,
-      transparent 0,
-      transparent calc(var(--minor-cell-width) - 1px),
-      var(--line) calc(var(--minor-cell-width) - 1px),
-      var(--line) var(--minor-cell-width)
-    ),
-    repeating-linear-gradient(
-      to right,
-      transparent 0,
-      transparent calc(var(--cell-width) - 1px),
-      var(--line-strong) calc(var(--cell-width) - 1px),
-      var(--line-strong) var(--cell-width)
-    );
-  background-size:
-    var(--cell-width) 100%,
-    auto,
-    auto;
-}
-
-.group-row .timeline-row {
-  background-color: var(--paper-soft);
-}
-
-.task-bar {
-  position: absolute;
-  z-index: 3;
-  top: calc((var(--task-row-height) - 21px) / 2);
-  height: 21px;
-  min-width: 8px;
-  border-radius: 4px;
-  background: var(--accent);
-  color: white;
-  touch-action: none;
-}
-
-.task-bar-main {
-  width: 100%;
-  height: 100%;
-  display: block;
-  padding: 0 7px;
-  overflow: hidden;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: grab;
-  touch-action: none;
-}
-
-.task-bar-main:active {
-  cursor: grabbing;
-}
-
-.task-bar-main span {
-  display: block;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 21px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-bar:hover .task-bar-main {
-  filter: brightness(1.08);
-}
-
-.task-bar.is-complete {
-  background: var(--success);
-  opacity: 0.72;
-}
-
-.task-bar.is-milestone {
-  top: calc((var(--task-row-height) - 15px) / 2);
-  width: 15px;
-  height: 15px;
-  min-width: 15px;
-  border-radius: 2px;
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.task-bar.is-milestone .task-bar-main {
-  padding: 0;
-}
-
-.task-bar.is-preview {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  opacity: 0.78;
-}
-
-.task-bar.is-placement-preview {
-  pointer-events: none;
-}
-
-.resize-grip,
-.link-port {
-  position: absolute;
-  z-index: 5;
-  padding: 0;
-  border: 0;
-  touch-action: none;
-}
-
-.resize-grip {
-  top: 2px;
-  bottom: 2px;
-  width: 6px;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.8);
-  cursor: ew-resize;
-  opacity: 0;
-}
-
-.resize-grip.is-start {
-  left: 2px;
-}
-
-.resize-grip.is-finish {
-  right: 2px;
-}
-
-.task-bar:hover .resize-grip,
-.resize-grip:focus-visible {
-  opacity: 1;
-}
-
-.link-port {
-  bottom: -14px;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--paper);
-  cursor: crosshair;
-  opacity: 0;
-}
-
-.link-port.is-start {
-  left: -4px;
-}
-
-.link-port.is-finish {
-  right: -4px;
-}
-
-.task-bar:hover .link-port,
-.task-bar:focus-within .link-port,
-.gantt-frame.is-linking .link-port {
-  opacity: 1;
-}
-
-.link-port.is-targeted {
-  border-color: var(--success);
-  background: var(--success);
-  transform: scale(1.35);
-}
-
-.link-port.is-targeted.is-invalid {
-  border-color: var(--danger);
-  background: var(--danger);
-}
-
-.unscheduled-row-action {
-  position: sticky;
-  z-index: 3;
-  top: 9px;
-  left: calc(var(--task-column) + 12px);
-  width: max-content;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 4px;
-  background: var(--paper);
-  color: var(--ink-muted);
-  font-size: 12px;
-  touch-action: none;
-}
-
-.unscheduled-row-action:active {
-  cursor: grabbing;
-}
-
-.unscheduled-row-action.is-preview {
-  color: var(--accent);
-}
-
-.today-line {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--danger);
-  pointer-events: none;
-}
-
-.today-line span {
-  position: sticky;
-  top: 3px;
-  display: block;
-  width: max-content;
-  padding: 2px 4px;
-  border-radius: 3px;
-  background: var(--danger);
-  color: white;
-  font-family: "Azeret Mono", monospace;
-  font-size: 8px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transform: translateX(-50%);
-}
-
-.dependency-layer {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.dependency-layer path {
-  fill: none;
-  stroke: var(--ink-muted);
-  stroke-width: 1.1;
-  opacity: 0.6;
-  vector-effect: non-scaling-stroke;
-}
-
-.dependency-layer marker path {
-  fill: var(--ink-muted);
-  stroke: none;
-}
-
-.dependency-layer .link-preview {
-  stroke: var(--accent);
-  stroke-width: 1.7;
-  opacity: 1;
-}
-
-.dependency-layer .link-preview.is-invalid {
-  stroke: var(--danger);
 }
 
 .gantt-interaction-message {
@@ -1800,15 +1458,6 @@ select:focus-visible {
   .planner-toolbar {
     min-height: 54px;
     padding: 6px 8px;
-  }
-
-  .gantt-canvas {
-    --task-column: 280px;
-    --task-row-height: 65px;
-  }
-
-  .unscheduled-row-action {
-    margin-top: calc((var(--task-row-height) - 30px) / 2);
   }
 
   .ledger-title strong {

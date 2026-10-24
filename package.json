@@ -32,6 +32,7 @@
     "@mdbase-dev/connect": "file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz",
     "@mdbase-dev/sdk": "file:vendor/mdbase-dev-sdk-dev-0ecbef41.tgz",
     "@mdbase-dev/ui": "file:vendor/ui-dev-9553ad66.tgz",
+    "@tasknotes/calendar": "file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz",
     "@tasknotes/model": "file:vendor/tasknotes-model-0.3.0-rc.15.tgz",
     "lucide-react": "1.25.0",
     "react": "19.2.8",

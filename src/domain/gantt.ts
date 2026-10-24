@@ -552,3 +552,99 @@ function dateMs(value: string): number {
 function dateFromMs(value: number): string {
   return new Date(value).toISOString().slice(0, 10);
 }
+
+/**
+ * A task as a timeline item: `end` is exclusive, so an all-day task due on D
+ * ends at D+1. Timed values are floating `YYYY-MM-DDTHH:mm` strings.
+ */
+export interface TimelineItemSchedule {
+  start: string;
+  end: string;
+  allDay: boolean;
+  milestone: boolean;
+}
+
+export type TimelineChangeKind = "move" | "resize-start" | "resize-finish";
+
+export function taskTimelineItem(
+  task: PlannerTask,
+  snapMinutes: number,
+): TimelineItemSchedule | null {
+  const span = taskTimelineSpan(task, snapMinutes);
+  if (!span) return null;
+  if (!span.timed) {
+    const startDay = Math.floor(span.startMinute / DAY_MINUTES);
+    const endDay = span.milestone
+      ? startDay + 1
+      : Math.max(startDay + 1, Math.ceil(span.endMinute / DAY_MINUTES));
+    return {
+      start: dateFromMs(startDay * DAY_MS),
+      end: dateFromMs(endDay * DAY_MS),
+      allDay: true,
+      milestone: span.milestone,
+    };
+  }
+  return {
+    start: floatingValue(span.startMinute),
+    end: floatingValue(span.endMinute),
+    allDay: false,
+    milestone: span.milestone,
+  };
+}
+
+/**
+ * Converts a timeline drop or resize (exclusive `end`) back into TaskNotes
+ * `scheduled` and inclusive `due` values, preserving each value's own form.
+ */
+export function scheduleFromTimelineChange(
+  task: PlannerTask,
+  kind: TimelineChangeKind,
+  change: { start: string; end: string; allDay: boolean },
+  snapMinutes: number,
+): ScheduleUpdate {
+  const span = taskTimelineSpan(task, snapMinutes);
+  if (!span) return { scheduled: task.scheduled, due: task.due };
+  const startMinute = planningMinute(change.start)!;
+  const endMinute = planningMinute(change.end)!;
+  if (kind === "move") {
+    const delta = change.allDay
+      ? (Math.floor(startMinute / DAY_MINUTES) -
+          Math.floor(span.startMinute / DAY_MINUTES)) *
+        DAY_MINUTES
+      : startMinute - span.startMinute;
+    return shiftedScheduleByMinutes(task, delta);
+  }
+  if (change.allDay) {
+    return kind === "resize-start"
+      ? resizedSchedule(task, "start", datePart(change.start)!)
+      : resizedSchedule(task, "finish", addDays(datePart(change.end)!, -1));
+  }
+  return kind === "resize-start"
+    ? resizedScheduleAt(task, "start", startMinute, snapMinutes)
+    : resizedScheduleAt(task, "finish", endMinute, snapMinutes);
+}
+
+/** The `scheduled` value for unscheduled work placed on the timeline. */
+export function placedSchedule(start: string, allDay: boolean): ScheduleUpdate {
+  return {
+    scheduled: allDay
+      ? datePart(start)!
+      : minuteToPlanningValue(planningMinute(start)!, undefined, true),
+    due: undefined,
+  };
+}
+
+/** Ids of the tasks a task is blocked by, resolved against `tasks`. */
+export function dependencyTaskIds(
+  task: PlannerTask,
+  tasks: readonly PlannerTask[],
+): string[] {
+  return task.blockedBy.flatMap((dependency) => {
+    const source = resolveDependencyTask(tasks, dependency.uid);
+    return source && source.id !== task.id ? [source.id] : [];
+  });
+}
+
+function floatingValue(minute: number): string {
+  return minuteToPlanningValue(minute, undefined, true).slice(0, 16);
+}

@@ -1,19 +1,25 @@
-import { Check, GitBranch, Minus } from "lucide-react";
+import { Calendar } from "@tasknotes/calendar";
+import "@tasknotes/calendar/calendar.css";
+import { Check, GitBranch } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 
 import type {
-  CSSProperties,
-  KeyboardEvent as ReactKeyboardEvent,
-  MutableRefObject,
-  PointerEvent as ReactPointerEvent,
-} from "react";
+  CalendarItem,
+  CalendarOptions,
+  ExternalDragSource,
+  ItemChangeArg,
+  TimelineRow,
+  TimelineScale as CalendarTimelineScale,
+} from "@tasknotes/calendar";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 import {
   addOrReplaceDependency,
@@ -22,19 +28,19 @@ import {
   dateFromDate,
   dateLabel,
   dependencyRelationship,
+  dependencyTaskIds,
   groupTasks,
   hasInvertedSchedule,
-  minuteToPlanningValue,
+  placedSchedule,
   planningMinute,
-  resolveDependencyTask,
-  resizedScheduleAt,
-  shiftedScheduleByMinutes,
+  scheduleFromTimelineChange,
   taskHasTime,
   taskSpan,
-  taskTimelineSpan,
+  taskTimelineItem,
   timelineScale,
-  withSchedule,
   type GanttRow,
+  type TimelineChangeKind,
+  type TimelineScale,
   type TimelineZoom,
 } from "../domain/gantt";
 import { errorMessage, isOperationOutcomeUnknown } from "../data/outcome";
@@ -45,57 +51,30 @@ import type {
   TaskDependency,
 } from "../domain/task";
 
-const TASK_COLUMN = 350;
-const GROUP_HEIGHT = 35;
-const TASK_HEIGHT = 49;
+/** Task id carried by an unscheduled task while it is dragged onto the timeline. */
+type PlacementData = string;
 
-type ScheduleDragKind = "move" | "resize-start" | "resize-finish" | "place";
+const PHONE_QUERY = "(max-width: 560px)";
+const LEDGER = {
+  wide: { labelWidth: 350, rowHeight: 49 },
+  phone: { labelWidth: 280, rowHeight: 65 },
+} as const;
 
-interface ScheduleDrag {
-  task: PlannerTask;
-  kind: ScheduleDragKind;
-  originClientX: number;
-  timelineLeft: number;
-  update: ScheduleUpdate;
-  changed: boolean;
-  validPlacement: boolean;
-}
-
-interface SchedulePreview {
-  taskId: string;
-  update: ScheduleUpdate;
-}
-
-interface LinkDrag {
-  sourceId: string;
-  sourceEdge: "start" | "finish";
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  targetId?: string;
-  targetEdge?: "start" | "finish";
-  invalidReason?: string;
-}
+/** Days per scale unit, as the calendar's timeline measures them. */
+const UNIT_DAYS: Record<CalendarTimelineScale["unit"], number> = {
+  hour: 1 / 24,
+  day: 1,
+  week: 7,
+  month: 30.44,
+  quarter: 91.31,
+};
 
 interface InteractionMessage {
   tone: "neutral" | "success" | "danger";
   text: string;
 }
 
-export function GanttChart({
-  tasks,
-  allTasks,
-  zoom,
-  selectedId,
-  todayRequest,
-  mutationsDisabled = false,
-  onSelect,
-  onZoom,
-  onScheduleChange,
-  onDependenciesChange,
-  onCompletionChange,
-}: {
+interface GanttChartProps {
   tasks: readonly PlannerTask[];
   allTasks: readonly PlannerTask[];
   zoom: TimelineZoom;
@@ -110,118 +89,101 @@ export function GanttChart({
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
   ): Promise<void>;
-}) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const body = useRef<HTMLDivElement>(null);
-  const scheduleDrag = useRef<ScheduleDrag | null>(null);
-  const activeLink = useRef<LinkDrag | null>(null);
-  const suppressClick = useRef(false);
+}
+
+export function GanttChart(props: GanttChartProps) {
+  if (!props.tasks.length)
+    return (
+      <section className="gantt-empty">
+        <h2>No tasks match these controls</h2>
+        <p>Change the saved view, search, or task filters.</p>
+      </section>
+    );
+  return <GanttTimeline {...props} />;
+}
+
+function GanttTimeline({
+  tasks,
+  allTasks,
+  zoom,
+  selectedId,
+  todayRequest,
+  mutationsDisabled = false,
+  onSelect,
+  onZoom,
+  onScheduleChange,
+  onDependenciesChange,
+  onCompletionChange,
+}: GanttChartProps) {
+  const host = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<Calendar<PlacementData> | null>(null);
+  const wheelHandler = useRef<((event: WheelEvent) => void) | null>(null);
+  const previousScale = useRef<{ scale: TimelineScale; labelWidth: number }>(
+    null,
+  );
   const pendingZoomAnchor = useRef<{
     minute: number;
     viewportX: number;
   } | null>(null);
-  const statusTimer = useRef<number | null>(null);
   const lastTodayRequest = useRef<number | null>(null);
-  const [schedulePreview, setSchedulePreview] =
-    useState<SchedulePreview | null>(null);
-  const [linkDrag, setLinkDrag] = useState<LinkDrag | null>(null);
+  const statusTimer = useRef<number | null>(null);
+  // Ledger labels are React portals, so their clicks reach React before the
+  // calendar can suppress the click that ends a placement drag.
+  const placementClick = useRef(false);
+  const [labelHosts, setLabelHosts] = useState<
+    ReadonlyMap<string, HTMLElement>
+  >(() => new Map());
   const [interactionMessage, setInteractionMessage] =
     useState<InteractionMessage | null>(null);
   const [completionPending, setCompletionPending] = useState<Set<string>>(
     () => new Set(),
   );
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
-  const [taskHeight, setTaskHeight] = useState(TASK_HEIGHT);
+  const { labelWidth, rowHeight } = useMediaQuery(PHONE_QUERY)
+    ? LEDGER.phone
+    : LEDGER.wide;
   const today = dateFromDate(new Date());
-  const now = new Date();
   const scale = useMemo(
     () => timelineScale(tasks, zoom, today, timelineViewportWidth),
     [tasks, timelineViewportWidth, today, zoom],
   );
-  const previousScale = useRef(scale);
   const rows = useMemo(() => groupTasks(tasks), [tasks]);
-  const timelineWidth = scale.days.length * scale.cellWidth;
-  const bodyHeight = rows.reduce(
-    (height, row) =>
-      height + (row.kind === "group" ? GROUP_HEIGHT : taskHeight),
-    0,
+  const timelineRows = useMemo(
+    () =>
+      rows.map((row): TimelineRow =>
+        row.kind === "group"
+          ? { id: row.id, title: row.label, group: true }
+          : { id: row.id, title: row.task.title },
+      ),
+    [rows],
   );
-  const scaleStartMinute = planningMinute(scale.start)!;
-  const currentMinute = planningMinute(
-    `${today}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:00`,
-  )!;
-  const todayX = minuteX(
-    scaleStartMinute,
-    scale.intraday ? currentMinute : planningMinute(today)!,
-    scale.cellWidth,
+  const tasksById = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks],
   );
-
-  useLayoutEffect(() => {
-    const surface = scroller.current;
-    if (!surface) return;
-    const updateWidth = () => {
-      const width = Math.max(0, surface.clientWidth - taskColumnWidth(surface));
-      setTaskHeight(taskRowHeight(surface));
-      setTimelineViewportWidth((current) =>
-        Math.abs(current - width) < 1 ? current : width,
-      );
-    };
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(surface);
-    return () => observer.disconnect();
-  }, [rows.length]);
-
-  useLayoutEffect(() => {
-    const surface = scroller.current;
-    const previous = previousScale.current;
-    if (!surface) return;
-    if (
-      previous.cellWidth !== scale.cellWidth ||
-      previous.start !== scale.start
-    ) {
-      const taskColumn = taskColumnWidth(surface);
-      const pending = pendingZoomAnchor.current;
-      const viewportX =
-        pending?.viewportX ??
-        taskColumn + (surface.clientWidth - taskColumn) / 2;
-      const anchorMinute =
-        pending?.minute ??
-        planningMinute(previous.start)! +
-          ((surface.scrollLeft + viewportX - taskColumn) / previous.cellWidth) *
-            DAY_MINUTES;
-      surface.scrollLeft = Math.max(
-        0,
-        taskColumn +
-          minuteX(planningMinute(scale.start)!, anchorMinute, scale.cellWidth) -
-          viewportX,
-      );
-    }
-    pendingZoomAnchor.current = null;
-    previousScale.current = scale;
-  }, [scale]);
-
-  useEffect(() => {
-    if (lastTodayRequest.current === todayRequest) return;
-    lastTodayRequest.current = todayRequest;
-    const surface = scroller.current;
-    if (!surface) return;
-    const taskColumn = taskColumnWidth(surface);
-    const targetX = taskColumn + (surface.clientWidth - taskColumn) / 2;
-    const left = Math.max(0, taskColumn + todayX - targetX);
-    surface.scrollTo({
-      left,
-      behavior: todayRequest ? "smooth" : "auto",
-    });
-  }, [todayRequest, todayX]);
-
-  useEffect(
-    () => () => {
-      if (statusTimer.current !== null)
-        window.clearTimeout(statusTimer.current);
-    },
-    [],
+  const items = useMemo(
+    () =>
+      tasks.flatMap((task): CalendarItem<PlacementData>[] => {
+        const schedule = taskTimelineItem(task, scale.snapMinutes);
+        if (!schedule) return [];
+        const color = task.completed ? "var(--success)" : "var(--accent)";
+        return [
+          {
+            id: task.id,
+            title: task.title,
+            start: schedule.start,
+            end: schedule.end,
+            allDay: schedule.allDay,
+            kind: schedule.milestone ? "milestone" : "task",
+            completed: task.completed,
+            color,
+            backgroundColor: color,
+            textColor: "var(--paper)",
+            dependsOn: dependencyTaskIds(task, allTasks),
+          },
+        ];
+      }),
+    [allTasks, scale.snapMinutes, tasks],
   );
 
   function showMessage(message: InteractionMessage, duration = 2_200) {
@@ -233,12 +195,16 @@ export function GanttChart({
     );
   }
 
-  async function commitSchedule(task: PlannerTask, update: ScheduleUpdate) {
-    if (mutationsDisabled) return;
+  async function commitSchedule(
+    task: PlannerTask,
+    update: ScheduleUpdate,
+  ): Promise<boolean> {
+    if (mutationsDisabled) return false;
     showMessage({ tone: "neutral", text: "Saving schedule…" }, 10_000);
     try {
       await onScheduleChange(task, update);
       showMessage({ tone: "success", text: "Schedule saved" });
+      return true;
     } catch (reason) {
       showMessage(
         {
@@ -249,6 +215,7 @@ export function GanttChart({
         },
         5_000,
       );
+      return false;
     }
   }
 
@@ -319,120 +286,115 @@ export function GanttChart({
     }
   }
 
-  function beginScheduleDrag(
-    event: ReactPointerEvent<HTMLElement>,
-    task: PlannerTask,
-    kind: ScheduleDragKind,
+  /** Rejects when the write fails so the calendar restores the bar. */
+  async function writeTimelineChange(
+    arg: ItemChangeArg<PlacementData>,
+    kind: TimelineChangeKind,
   ) {
-    if (event.button !== 0) return;
-    const timeline = event.currentTarget
-      .closest<HTMLElement>(".gantt-row")
-      ?.querySelector<HTMLElement>(".timeline-row");
-    if (!timeline) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    scheduleDrag.current = {
+    const task = tasksById.get(arg.item.id);
+    if (!task) throw new Error("The task is no longer visible.");
+    const update = scheduleFromTimelineChange(
       task,
       kind,
-      originClientX: event.clientX,
-      timelineLeft: timeline.getBoundingClientRect().left,
-      update: { scheduled: task.scheduled, due: task.due },
-      changed: false,
-      validPlacement: false,
-    };
-    window.addEventListener("pointermove", moveWindowScheduleDrag);
-    window.addEventListener("pointerup", endWindowScheduleDrag);
-    window.addEventListener("pointercancel", cancelWindowScheduleDrag);
+      { start: arg.startStr, end: arg.endStr, allDay: arg.allDay },
+      scale.snapMinutes,
+    );
+    if (!(await commitSchedule(task, update)))
+      throw new Error("Schedule not saved.");
   }
 
-  function moveScheduleDrag(event: { clientX: number; clientY?: number }) {
-    const current = scheduleDrag.current;
-    if (!current) return;
-    const rawDelta =
-      ((event.clientX - current.originClientX) / scale.cellWidth) * DAY_MINUTES;
-    const step =
-      scale.intraday && taskHasTime(current.task)
-        ? scale.snapMinutes
-        : DAY_MINUTES;
-    const delta = Math.round(rawDelta / step) * step;
-    const moved = Math.abs(event.clientX - current.originClientX) >= 4;
-    let update = current.update;
-    let validPlacement = current.validPlacement;
-    if (current.kind === "move")
-      update = shiftedScheduleByMinutes(current.task, delta);
-    else if (current.kind === "place") {
-      const surface = scroller.current;
-      const bounds = surface?.getBoundingClientRect();
-      const left =
-        bounds?.width && surface
-          ? Math.max(
-              current.timelineLeft,
-              bounds.left + taskColumnWidth(surface),
-            )
-          : current.timelineLeft;
-      const right = bounds?.width
-        ? Math.min(current.timelineLeft + timelineWidth, bounds.right)
-        : current.timelineLeft + timelineWidth;
-      validPlacement =
-        event.clientX >= left &&
-        event.clientX < right &&
-        (event.clientY === undefined ||
-          !bounds?.height ||
-          (event.clientY >= bounds.top && event.clientY <= bounds.bottom));
-      const offset = Math.max(
-        0,
-        Math.min(
-          scale.days.length * DAY_MINUTES - scale.snapMinutes,
-          ((event.clientX - current.timelineLeft) / scale.cellWidth) *
-            DAY_MINUTES,
-        ),
-      );
-      const snapped =
-        Math.floor(offset / scale.snapMinutes) * scale.snapMinutes;
-      update = {
-        scheduled: minuteToPlanningValue(
-          planningMinute(scale.start)! + snapped,
-          undefined,
-          scale.intraday,
-        ),
-        due: undefined,
-      };
-    } else {
-      const span = taskTimelineSpan(current.task, step);
-      if (span) {
-        const edge = current.kind === "resize-start" ? "start" : "finish";
-        const origin = edge === "start" ? span.startMinute : span.endMinute;
-        update = resizedScheduleAt(current.task, edge, origin + delta, step);
-      }
+  function linkTasks(fromId: string, toId: string) {
+    const allowed = canAddDependency(allTasks, fromId, toId);
+    if (!allowed.allowed) {
+      showMessage({ tone: "danger", text: allowed.reason }, 3_500);
+      return;
     }
-    scheduleDrag.current = {
-      ...current,
-      update,
-      changed: moved,
-      validPlacement,
-    };
-    if (moved) {
-      setSchedulePreview(
-        current.kind !== "place" || validPlacement
-          ? { taskId: current.task.id, update }
-          : null,
-      );
-    }
+    const target = allTasks.find((task) => task.id === toId);
+    if (!target) return;
+    void commitDependencies(
+      target,
+      addOrReplaceDependency(
+        target.blockedBy,
+        fromId,
+        dependencyRelationship("finish", "start"),
+        allTasks,
+      ),
+    );
   }
 
-  function endScheduleDrag() {
-    const current = scheduleDrag.current;
-    if (!current) return;
-    removeWindowScheduleListeners();
-    scheduleDrag.current = null;
-    setSchedulePreview(null);
-    if (!current.changed) return;
-    suppressClick.current = true;
-    window.setTimeout(() => {
-      suppressClick.current = false;
-    }, 0);
-    if (current.kind === "place" && !current.validPlacement) {
+  function beginPlacement(
+    event: ReactPointerEvent<HTMLElement>,
+    task: PlannerTask,
+  ) {
+    const calendar = calendarRef.current;
+    if (mutationsDisabled || event.button !== 0 || !calendar) return;
+    const origin = event.nativeEvent;
+    const doc = event.currentTarget.ownerDocument;
+    const touch = origin.pointerType === "touch";
+    const source: ExternalDragSource<PlacementData> = {
+      title: task.title,
+      durationMinutes: scale.intraday ? scale.snapMinutes : undefined,
+      color: "var(--accent)",
+      kind: "task",
+      data: task.id,
+    };
+    let timer: number | null = null;
+    const stop = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      doc.removeEventListener("pointermove", move);
+      doc.removeEventListener("pointerup", stop);
+      doc.removeEventListener("pointercancel", stop);
+    };
+    const start = (from: PointerEvent) => {
+      stop();
+      placementClick.current = true;
+      doc.addEventListener(
+        "pointerup",
+        () => window.setTimeout(() => (placementClick.current = false), 0),
+        { once: true },
+      );
+      calendar.beginExternalDrag(from, source);
+    };
+    // Mouse placement starts after a small movement so a click still selects;
+    // touch placement needs a long press so the ledger keeps scrolling.
+    function move(next: PointerEvent) {
+      if (next.pointerId !== origin.pointerId) return;
+      const distance = Math.hypot(
+        next.clientX - origin.clientX,
+        next.clientY - origin.clientY,
+      );
+      if (touch) {
+        if (distance > 8) stop();
+      } else if (distance >= 4) start(next);
+    }
+    doc.addEventListener("pointermove", move);
+    doc.addEventListener("pointerup", stop);
+    doc.addEventListener("pointercancel", stop);
+    if (touch)
+      timer = window.setTimeout(() => {
+        navigator.vibrate?.(10);
+        start(origin);
+      }, 350);
+  }
+
+  function placeTask(
+    taskId: string | undefined,
+    start: string,
+    allDay: boolean,
+    pointer: MouseEvent | KeyboardEvent | null,
+  ) {
+    const task = taskId ? tasksById.get(taskId) : undefined;
+    const surface = host.current;
+    if (!task || !surface) return;
+    const bounds = surface.getBoundingClientRect();
+    const inside =
+      pointer &&
+      "clientX" in pointer &&
+      pointer.clientX >= bounds.left + labelWidth &&
+      pointer.clientX < bounds.right &&
+      pointer.clientY >= bounds.top &&
+      pointer.clientY < bounds.bottom;
+    if (!inside) {
       showMessage(
         {
           tone: "neutral",
@@ -442,263 +404,218 @@ export function GanttChart({
       );
       return;
     }
-    void commitSchedule(current.task, current.update);
+    void commitSchedule(task, placedSchedule(start, allDay));
   }
 
-  function cancelScheduleDrag() {
-    removeWindowScheduleListeners();
-    scheduleDrag.current = null;
-    setSchedulePreview(null);
-  }
-
-  function moveWindowScheduleDrag(event: PointerEvent) {
-    moveScheduleDrag(event);
-  }
-
-  function endWindowScheduleDrag() {
-    endScheduleDrag();
-  }
-
-  function cancelWindowScheduleDrag() {
-    cancelScheduleDrag();
-  }
-
-  function removeWindowScheduleListeners() {
-    window.removeEventListener("pointermove", moveWindowScheduleDrag);
-    window.removeEventListener("pointerup", endWindowScheduleDrag);
-    window.removeEventListener("pointercancel", cancelWindowScheduleDrag);
-  }
-
-  function nudgeSchedule(
-    task: PlannerTask,
-    kind: Exclude<ScheduleDragKind, "place">,
-    direction: number,
-  ) {
+  function itemLabel(task: PlannerTask): string {
+    if (mutationsDisabled)
+      return `${task.title}, ${scheduleLabel(task)}. Select to review.`;
     const step =
-      scale.intraday && taskHasTime(task) ? scale.snapMinutes : DAY_MINUTES;
-    const span = taskTimelineSpan(task, step);
-    if (!span) return;
-    const update =
-      kind === "move"
-        ? shiftedScheduleByMinutes(task, direction * step)
-        : resizedScheduleAt(
-            task,
-            kind === "resize-start" ? "start" : "finish",
-            (kind === "resize-start" ? span.startMinute : span.endMinute) +
-              direction * step,
-            step,
-          );
-    void commitSchedule(task, update);
+      scale.intraday && taskHasTime(task)
+        ? scale.snapMinutes === 15
+          ? "15 minutes"
+          : "one hour"
+        : "one day";
+    return `${task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${step}; Alt plus Shift plus arrow keys change the end.`;
   }
 
-  function beginLink(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    task: PlannerTask,
-    edge: "start" | "finish",
-  ) {
-    if (event.button !== 0 || !body.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const port = event.currentTarget.getBoundingClientRect();
-    const coordinates = timelineCoordinates(
-      port.left + port.width / 2,
-      port.top + port.height / 2,
-    );
-    if (!coordinates) return;
-    const next: LinkDrag = {
-      sourceId: task.id,
-      sourceEdge: edge,
-      startX: coordinates.x,
-      startY: coordinates.y,
-      currentX: coordinates.x,
-      currentY: coordinates.y,
+  const options: Partial<CalendarOptions<PlacementData>> = {
+    view: "timeline",
+    date: scale.start,
+    toolbar: false,
+    timeZone: "local",
+    height: "fill",
+    editable: !mutationsDisabled,
+    selectable: false,
+    navLinks: false,
+    timeline: {
+      rows: timelineRows,
+      rowOf: (item) => item.id,
+      scale: calendarScale(scale),
+      days: scale.days.length,
+      leadDays: 0,
+      labelWidth,
+      rowHeight,
+      dependencies: true,
+      rowContent: (row, element) => {
+        element.classList.add("gantt-ledger-host");
+        setLabelHosts((current) =>
+          current.get(row.id) === element
+            ? current
+            : new Map(current).set(row.id, element),
+        );
+      },
+      onLink: mutationsDisabled
+        ? undefined
+        : ({ from, to }) => linkTasks(from.id, to.id),
+    },
+    onItemClick: ({ item }) => {
+      const task = tasksById.get(item.id);
+      if (task) onSelect(task);
+    },
+    onItemDrop: (arg) => writeTimelineChange(arg, "move"),
+    onItemResize: (arg) =>
+      writeTimelineChange(
+        arg,
+        arg.start.getTime() !== arg.oldStart.getTime()
+          ? "resize-start"
+          : "resize-finish",
+      ),
+    onExternalDrop: (arg) =>
+      placeTask(arg.source?.data, arg.startStr, arg.allDay, arg.jsEvent),
+    itemDidMount: ({ item, el, isMirror }) => {
+      const task = tasksById.get(item.id);
+      if (!task || isMirror) return;
+      el.setAttribute("aria-label", itemLabel(task));
+      el.classList.toggle("is-selected", item.id === selectedId);
+    },
+  };
+
+  useLayoutEffect(() => {
+    const surface = host.current;
+    if (!surface) return;
+    const calendar = new Calendar<PlacementData>(surface, {
+      view: "timeline",
+      toolbar: false,
+    });
+    calendarRef.current = calendar;
+    const wheel = (event: WheelEvent) => wheelHandler.current?.(event);
+    surface.addEventListener("wheel", wheel, { passive: false });
+    const updateWidth = () => {
+      const width = Math.max(0, surface.clientWidth - labelWidthOf(surface));
+      setTimelineViewportWidth((current) =>
+        Math.abs(current - width) < 1 ? current : width,
+      );
     };
-    activeLink.current = next;
-    setLinkDrag(next);
-  }
-
-  function moveLink(event: ReactPointerEvent<HTMLButtonElement>) {
-    const current = activeLink.current;
-    if (!current) return;
-    const coordinates = timelineCoordinates(event.clientX, event.clientY);
-    if (!coordinates) return;
-    const port = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLButtonElement>(".link-port[data-task-id]");
-    const targetId = port?.dataset.taskId;
-    const targetEdge = port?.dataset.edge as "start" | "finish" | undefined;
-    const allowed = targetId
-      ? canAddDependency(allTasks, current.sourceId, targetId)
-      : null;
-    const next: LinkDrag = {
-      ...current,
-      currentX: coordinates.x,
-      currentY: coordinates.y,
-      targetId,
-      targetEdge,
-      invalidReason: allowed && !allowed.allowed ? allowed.reason : undefined,
+    updateWidth();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateWidth);
+    observer?.observe(surface);
+    return () => {
+      observer?.disconnect();
+      surface.removeEventListener("wheel", wheel);
+      calendar.destroy();
+      calendarRef.current = null;
+      previousScale.current = null;
+      lastTodayRequest.current = null;
     };
-    activeLink.current = next;
-    setLinkDrag(next);
-  }
+  }, []);
 
-  function endLink(event: ReactPointerEvent<HTMLButtonElement>) {
-    const current = activeLink.current;
-    if (event.currentTarget.hasPointerCapture(event.pointerId))
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    activeLink.current = null;
-    setLinkDrag(null);
-    if (!current?.targetId || !current.targetEdge || current.invalidReason) {
-      if (current?.invalidReason)
-        showMessage({ tone: "danger", text: current.invalidReason }, 3_500);
-      return;
+  useLayoutEffect(() => {
+    const calendar = calendarRef.current;
+    const surface = host.current;
+    if (!calendar || !surface) return;
+    const scroll = calendar.getScroll();
+    const previous = previousScale.current;
+    let anchor = pendingZoomAnchor.current;
+    pendingZoomAnchor.current = null;
+    const rescaled =
+      previous &&
+      (previous.scale.start !== scale.start ||
+        previous.scale.cellWidth !== scale.cellWidth ||
+        previous.labelWidth !== labelWidth);
+    if (rescaled && !anchor) {
+      const viewportX =
+        previous.labelWidth + (surface.clientWidth - previous.labelWidth) / 2;
+      anchor = {
+        viewportX,
+        minute:
+          planningMinute(previous.scale.start)! +
+          ((scroll.left + viewportX - previous.labelWidth) /
+            previous.scale.cellWidth) *
+            DAY_MINUTES,
+      };
     }
-    const target = allTasks.find((task) => task.id === current.targetId);
-    if (!target) return;
-    void commitDependencies(
-      target,
-      addOrReplaceDependency(
-        target.blockedBy,
-        current.sourceId,
-        dependencyRelationship(current.sourceEdge, current.targetEdge),
-        allTasks,
-      ),
-    );
-  }
+    previousScale.current = { scale, labelWidth };
 
-  function cancelLink() {
-    activeLink.current = null;
-    setLinkDrag(null);
-  }
+    calendar.setOptions(options);
+    calendar.setItems(items);
+    calendar.flush();
 
-  function timelineCoordinates(clientX: number, clientY: number) {
-    const bodyElement = body.current;
-    const surface = scroller.current;
-    if (!bodyElement || !surface) return null;
-    const bounds = bodyElement.getBoundingClientRect();
-    return {
-      x: Math.max(
-        0,
-        Math.min(
-          timelineWidth,
-          clientX - bounds.left - taskColumnWidth(surface),
+    const startMinute = planningMinute(scale.start)!;
+    const xOf = (minute: number) =>
+      labelWidth + ((minute - startMinute) / DAY_MINUTES) * scale.cellWidth;
+    if (rescaled && anchor)
+      calendar.setScroll({
+        top: scroll.top,
+        left: Math.max(0, xOf(anchor.minute) - anchor.viewportX),
+      });
+    if (lastTodayRequest.current !== todayRequest) {
+      lastTodayRequest.current = todayRequest;
+      const now = new Date();
+      const todayMinute = scale.intraday
+        ? planningMinute(today)! + now.getHours() * 60 + now.getMinutes()
+        : planningMinute(today)!;
+      calendar.setScroll({
+        top: calendar.getScroll().top,
+        left: Math.max(
+          0,
+          xOf(todayMinute) -
+            (labelWidth + (surface.clientWidth - labelWidth) / 2),
         ),
-      ),
-      y: Math.max(0, Math.min(bodyHeight, clientY - bounds.top)),
-    };
-  }
+      });
+    }
 
-  const handleWheel = useCallback(
-    (event: WheelEvent) => {
+    for (const element of surface.querySelectorAll(".tnc-item.is-selected"))
+      element.classList.remove("is-selected");
+    if (selectedId)
+      for (const element of calendar.elementsFor(selectedId))
+        element.classList.add("is-selected");
+
+    wheelHandler.current = (event) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const surface = scroller.current;
-      if (!surface || event.deltaY === 0) return;
-      const taskColumn = taskColumnWidth(surface);
+      if (event.deltaY === 0) return;
       const bounds = surface.getBoundingClientRect();
-      const viewportX = Math.max(taskColumn, event.clientX - bounds.left);
-      const timelineX = surface.scrollLeft + viewportX - taskColumn;
+      const viewportX = Math.max(labelWidth, event.clientX - bounds.left);
       pendingZoomAnchor.current = {
-        minute:
-          planningMinute(scale.start)! +
-          (timelineX / scale.cellWidth) * DAY_MINUTES,
         viewportX,
+        minute:
+          startMinute +
+          ((calendar.getScroll().left + viewportX - labelWidth) /
+            scale.cellWidth) *
+            DAY_MINUTES,
       };
       onZoom(event.deltaY < 0 ? 1 : -1);
+    };
+  });
+
+  useEffect(
+    () => () => {
+      if (statusTimer.current !== null)
+        window.clearTimeout(statusTimer.current);
     },
-    [onZoom, scale.cellWidth, scale.start],
+    [],
   );
 
-  useEffect(() => {
-    const surface = scroller.current;
-    if (!surface) return;
-    surface.addEventListener("wheel", handleWheel, { passive: false });
-    return () => surface.removeEventListener("wheel", handleWheel);
-  }, [handleWheel, rows.length]);
-
-  if (!rows.length)
-    return (
-      <section className="gantt-empty">
-        <h2>No tasks match these controls</h2>
-        <p>Change the saved view, search, or task filters.</p>
-      </section>
-    );
-
   return (
-    <section
-      className={`gantt-frame${linkDrag ? " is-linking" : ""}`}
-      aria-label="Task timeline"
-    >
-      <div className="gantt-scroll" ref={scroller}>
-        <div
-          className="gantt-canvas"
-          style={{ width: TASK_COLUMN + timelineWidth }}
-        >
-          <div className="gantt-corner">
-            <span>Task</span>
-            <span>Schedule</span>
-          </div>
-          <TimelineHeader scale={scale} width={timelineWidth} />
-          <div className="gantt-body" ref={body} style={{ height: bodyHeight }}>
-            {rows.map((row) =>
-              row.kind === "group" ? (
-                <GroupRow
-                  key={row.id}
-                  row={row}
-                  scale={scale}
-                  timelineWidth={timelineWidth}
-                />
-              ) : (
-                <TaskRow
-                  key={row.id}
-                  linkDrag={linkDrag}
-                  mutationsDisabled={mutationsDisabled}
-                  preview={
-                    schedulePreview?.taskId === row.task.id
-                      ? schedulePreview.update
-                      : undefined
-                  }
-                  row={row}
-                  scale={scale}
-                  selected={selectedId === row.task.id}
-                  completionPending={completionPending.has(row.task.id)}
-                  suppressClickRef={suppressClick}
-                  taskHeight={taskHeight}
-                  timelineWidth={timelineWidth}
-                  onBeginLink={beginLink}
-                  onCompletionChange={commitCompletion}
-                  onBeginScheduleDrag={beginScheduleDrag}
-                  onCancelLink={cancelLink}
-                  onCancelScheduleDrag={cancelScheduleDrag}
-                  onEndLink={endLink}
-                  onEndScheduleDrag={endScheduleDrag}
-                  onMoveLink={moveLink}
-                  onMoveScheduleDrag={moveScheduleDrag}
-                  onNudge={nudgeSchedule}
-                  onSelect={onSelect}
-                />
-              ),
-            )}
-            <DependencyLayer
-              bodyHeight={bodyHeight}
-              taskHeight={taskHeight}
-              linkDrag={linkDrag}
-              rows={rows}
-              scale={scale}
-              timelineWidth={timelineWidth}
+    <section className="gantt-frame" aria-label="Task timeline">
+      <div className="gantt-scroll" ref={host} />
+      {rows.map((row) => {
+        const element = labelHosts.get(row.id);
+        if (!element) return null;
+        return createPortal(
+          row.kind === "group" ? (
+            <GroupLedger row={row} />
+          ) : (
+            <TaskLedger
+              completionPending={completionPending.has(row.task.id)}
+              mutationsDisabled={mutationsDisabled}
+              selected={selectedId === row.task.id}
+              task={row.task}
+              onBeginPlacement={beginPlacement}
+              onCompletionChange={commitCompletion}
+              onSelect={(task) => {
+                if (!placementClick.current) onSelect(task);
+              }}
             />
-            {todayX >= 0 && todayX <= timelineWidth ? (
-              <div
-                className="today-line"
-                style={{ left: `calc(var(--task-column) + ${todayX}px)` }}
-              >
-                <span>{scale.intraday ? "Now" : "Today"}</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+          ),
+          element,
+          row.id,
+        );
+      })}
       {interactionMessage ? (
         <p
           className={`gantt-interaction-message is-${interactionMessage.tone}`}
@@ -706,592 +623,145 @@ export function GanttChart({
         >
           {interactionMessage.text}
         </p>
-      ) : linkDrag ? (
-        <p className="gantt-interaction-message" role="status">
-          {linkDrag.invalidReason ??
-            "Drop on a task edge to set the relationship"}
-        </p>
       ) : null}
     </section>
   );
 }
 
-function TimelineHeader({
-  scale,
-  width,
-}: {
-  scale: ReturnType<typeof timelineScale>;
-  width: number;
-}) {
-  if (scale.intraday) {
-    const labelHours = scale.cellWidth >= 500 ? 3 : 6;
-    return (
-      <div
-        aria-hidden="true"
-        className="timeline-header is-intraday"
-        style={{ left: TASK_COLUMN, width }}
-      >
-        <div className="month-row">
-          {scale.days.map((date, index) => (
-            <span
-              className={`day-band${[0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()) ? " weekend" : ""}`}
-              key={date}
-              style={{
-                left: index * scale.cellWidth,
-                width: scale.cellWidth,
-              }}
-            >
-              {dateLabel(date, {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: undefined,
-              })}
-            </span>
-          ))}
-        </div>
-        <div className="date-row hour-row">
-          {scale.days.flatMap((date, dayIndex) =>
-            Array.from({ length: 24 / labelHours }, (_, index) => {
-              const hour = index * labelHours;
-              return (
-                <span
-                  key={`${date}-${hour}`}
-                  style={{
-                    left:
-                      dayIndex * scale.cellWidth +
-                      (hour / 24) * scale.cellWidth,
-                    width: (labelHours / 24) * scale.cellWidth,
-                  }}
-                >
-                  {String(hour).padStart(2, "0")}:00
-                </span>
-              );
-            }),
-          )}
-        </div>
-      </div>
-    );
-  }
-  const months = segmentDates(scale.days, (date) => date.slice(0, 7));
-  const weekLabels = scale.days.flatMap((date, index) =>
-    new Date(`${date}T00:00:00Z`).getUTCDay() === 1 ? [{ date, index }] : [],
-  );
+function GroupLedger({ row }: { row: Extract<GanttRow, { kind: "group" }> }) {
   return (
-    <div
-      aria-hidden="true"
-      className="timeline-header"
-      style={{ left: TASK_COLUMN, width }}
-    >
-      <div className="month-row">
-        {months.map((month) => (
-          <span
-            key={month.key}
-            style={{
-              left: month.start * scale.cellWidth,
-              width: month.length * scale.cellWidth,
-            }}
-          >
-            {dateLabel(month.date, {
-              month: "long",
-              year: "numeric",
-              day: undefined,
-            })}
-          </span>
-        ))}
-      </div>
-      <div className="date-row">
-        {scale.days.map((date, index) => {
-          const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-          return (
-            <span
-              className={day === 0 || day === 6 ? "weekend" : undefined}
-              key={date}
-              style={{ left: index * scale.cellWidth, width: scale.cellWidth }}
-            >
-              {scale.cellWidth >= 30 ? date.slice(8) : ""}
-            </span>
-          );
-        })}
-        {scale.cellWidth >= 8 && scale.cellWidth < 30
-          ? weekLabels.map(({ date, index }) => (
-              <b
-                key={date}
-                style={{
-                  left: index * scale.cellWidth,
-                  width: 7 * scale.cellWidth,
-                }}
-              >
-                {dateLabel(date)}
-              </b>
-            ))
-          : null}
-      </div>
+    <div className="group-ledger">
+      <span>{row.label}</span>
+      <small>{row.count}</small>
     </div>
   );
 }
 
-function GroupRow({
-  row,
-  timelineWidth,
-  scale,
-}: {
-  row: Extract<GanttRow, { kind: "group" }>;
-  timelineWidth: number;
-  scale: ReturnType<typeof timelineScale>;
-}) {
-  return (
-    <div className="gantt-row group-row" style={{ height: GROUP_HEIGHT }}>
-      <div className="task-ledger group-ledger">
-        <span>{row.label}</span>
-        <small>{row.count}</small>
-      </div>
-      <div
-        className={`timeline-row${scale.intraday ? " is-intraday" : ""}`}
-        style={timelineRowStyle(scale, timelineWidth)}
-      />
-    </div>
-  );
-}
-
-function TaskRow({
-  row,
-  timelineWidth,
-  taskHeight,
-  scale,
+function TaskLedger({
+  task,
   selected,
   completionPending,
-  preview,
-  linkDrag,
   mutationsDisabled,
-  suppressClickRef,
   onSelect,
   onCompletionChange,
-  onBeginScheduleDrag,
-  onMoveScheduleDrag,
-  onEndScheduleDrag,
-  onCancelScheduleDrag,
-  onNudge,
-  onBeginLink,
-  onMoveLink,
-  onEndLink,
-  onCancelLink,
+  onBeginPlacement,
 }: {
-  row: Extract<GanttRow, { kind: "task" }>;
-  timelineWidth: number;
-  taskHeight: number;
-  scale: ReturnType<typeof timelineScale>;
+  task: PlannerTask;
   selected: boolean;
   completionPending: boolean;
-  preview?: ScheduleUpdate;
-  linkDrag: LinkDrag | null;
   mutationsDisabled: boolean;
-  suppressClickRef: MutableRefObject<boolean>;
   onSelect(task: PlannerTask): void;
-  onCompletionChange(task: PlannerTask): void;
-  onBeginScheduleDrag(
+  onCompletionChange(task: PlannerTask): Promise<void>;
+  onBeginPlacement(
     event: ReactPointerEvent<HTMLElement>,
     task: PlannerTask,
-    kind: ScheduleDragKind,
   ): void;
-  onMoveScheduleDrag(event: { clientX: number }): void;
-  onEndScheduleDrag(): void;
-  onCancelScheduleDrag(): void;
-  onNudge(
-    task: PlannerTask,
-    kind: Exclude<ScheduleDragKind, "place">,
-    direction: number,
-  ): void;
-  onBeginLink(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    task: PlannerTask,
-    edge: "start" | "finish",
-  ): void;
-  onMoveLink(event: ReactPointerEvent<HTMLButtonElement>): void;
-  onEndLink(event: ReactPointerEvent<HTMLButtonElement>): void;
-  onCancelLink(): void;
 }) {
-  const task = preview ? withSchedule(row.task, preview) : row.task;
   const inverted = hasInvertedSchedule(task);
-  const existingSpan = taskTimelineSpan(row.task, scale.snapMinutes);
-  const span = taskTimelineSpan(task, scale.snapMinutes);
-  const scaleStartMinute = planningMinute(scale.start)!;
-  const startX = span
-    ? minuteX(scaleStartMinute, span.startMinute, scale.cellWidth)
-    : 0;
-  const width = span
-    ? Math.max(
-        (scale.snapMinutes / DAY_MINUTES) * scale.cellWidth,
-        minuteX(span.startMinute, span.endMinute, scale.cellWidth),
-      )
-    : 0;
-
-  function select() {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
-    onSelect(row.task);
-  }
-
-  function keyboardMove(
-    event: ReactKeyboardEvent,
-    kind: Exclude<ScheduleDragKind, "place">,
-  ) {
-    if (mutationsDisabled) return;
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    if (kind === "move" && !event.altKey) return;
-    event.preventDefault();
-    onNudge(row.task, kind, event.key === "ArrowLeft" ? -1 : 1);
-  }
-
+  const placeable = !taskSpan(task) && !mutationsDisabled;
   return (
-    <div
-      className={`gantt-row task-row${selected ? " is-selected" : ""}`}
-      style={{ height: taskHeight }}
-    >
-      <div className="task-ledger">
-        <button
-          aria-busy={completionPending || undefined}
-          aria-disabled={row.task.recurrence ? "true" : undefined}
-          aria-label={
-            row.task.recurrence
-              ? `Completion unavailable for recurring task ${row.task.title}`
-              : `${row.task.completed ? "Reopen" : "Complete"} ${row.task.title}`
-          }
-          className="completion-control"
-          disabled={completionPending || mutationsDisabled}
-          title={
-            row.task.recurrence
-              ? "Complete recurring tasks in TaskNotes, where you can choose an occurrence."
-              : row.task.completed
-                ? "Reopen task"
-                : "Complete task"
-          }
-          type="button"
-          onClick={() => onCompletionChange(row.task)}
-        >
-          <span
-            className={`completion-mark${row.task.completed ? " is-complete" : ""}`}
-          >
-            {row.task.completed ? <Check aria-hidden="true" size={12} /> : null}
-          </span>
-        </button>
-        <button
-          aria-label={
-            inverted
-              ? `${row.task.title}, ${scheduleLabel(task)}. Select to edit dates.`
-              : !existingSpan && !mutationsDisabled
-                ? `${row.task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
-                : undefined
-          }
-          className={`task-ledger-main${!existingSpan && !mutationsDisabled ? " is-placeable" : ""}`}
-          type="button"
-          onClick={select}
-          onPointerDown={
-            !existingSpan && !mutationsDisabled
-              ? (event) => onBeginScheduleDrag(event, row.task, "place")
-              : undefined
-          }
-        >
-          <span className="ledger-title">
-            <strong>{row.task.title}</strong>
-            <small
-              className={inverted ? "schedule-warning" : undefined}
-              title={inverted ? scheduleLabel(task) : undefined}
-            >
-              {inverted ? "Scheduled after due" : scheduleLabel(task)}
-            </small>
-          </span>
-          <span
-            aria-label={`${row.task.statusLabel}; ${row.task.priorityLabel} priority`}
-            className="ledger-state"
-            title={`${row.task.statusLabel} · ${row.task.priorityLabel} priority`}
-          >
-            <i style={{ background: row.task.statusColor }} />
-            <i style={{ background: row.task.priorityColor }} />
-          </span>
-          {row.task.blockedBy.length ? (
-            <GitBranch
-              aria-label={`${row.task.blockedBy.length} dependencies`}
-              size={14}
-            />
-          ) : null}
-        </button>
-      </div>
-      <div
-        className={`timeline-row${scale.intraday ? " is-intraday" : ""}`}
-        style={timelineRowStyle(scale, timelineWidth)}
+    <div className={`task-ledger${selected ? " is-selected" : ""}`}>
+      <button
+        aria-busy={completionPending || undefined}
+        aria-disabled={task.recurrence ? "true" : undefined}
+        aria-label={
+          task.recurrence
+            ? `Completion unavailable for recurring task ${task.title}`
+            : `${task.completed ? "Reopen" : "Complete"} ${task.title}`
+        }
+        className="completion-control"
+        disabled={completionPending || mutationsDisabled}
+        title={
+          task.recurrence
+            ? "Complete recurring tasks in TaskNotes, where you can choose an occurrence."
+            : task.completed
+              ? "Reopen task"
+              : "Complete task"
+        }
+        type="button"
+        onClick={() => void onCompletionChange(task)}
       >
-        {existingSpan && span ? (
-          <div
-            className={`task-bar${span.milestone ? " is-milestone" : ""}${row.task.completed ? " is-complete" : ""}${preview ? " is-preview" : ""}`}
-            style={
-              span.milestone
-                ? { left: startX }
-                : { left: startX + 3, width: Math.max(8, width - 6) }
-            }
+        <span
+          className={`completion-mark${task.completed ? " is-complete" : ""}`}
+        >
+          {task.completed ? <Check aria-hidden="true" size={12} /> : null}
+        </span>
+      </button>
+      <button
+        aria-label={
+          inverted
+            ? `${task.title}, ${scheduleLabel(task)}. Select to edit dates.`
+            : placeable
+              ? `${task.title}, not scheduled. Select to edit or drag to a date in the timeline.`
+              : undefined
+        }
+        className={`task-ledger-main${placeable ? " is-placeable" : ""}`}
+        type="button"
+        onClick={() => onSelect(task)}
+        onPointerDown={
+          placeable ? (event) => onBeginPlacement(event, task) : undefined
+        }
+      >
+        <span className="ledger-title">
+          <strong>{task.title}</strong>
+          <small
+            className={inverted ? "schedule-warning" : undefined}
+            title={inverted ? scheduleLabel(task) : undefined}
           >
-            <button
-              aria-label={
-                mutationsDisabled
-                  ? `${row.task.title}, ${scheduleLabel(task)}. Select to review.`
-                  : `${row.task.title}, ${scheduleLabel(task)}. Drag to move; Alt plus arrow keys move by ${scale.intraday && taskHasTime(task) ? (scale.snapMinutes === 15 ? "15 minutes" : "one hour") : "one day"}.`
-              }
-              className="task-bar-main"
-              type="button"
-              onClick={select}
-              onKeyDown={
-                mutationsDisabled
-                  ? undefined
-                  : (event) => keyboardMove(event, "move")
-              }
-              onPointerCancel={
-                mutationsDisabled ? undefined : onCancelScheduleDrag
-              }
-              onPointerDown={
-                mutationsDisabled
-                  ? undefined
-                  : (event) => onBeginScheduleDrag(event, row.task, "move")
-              }
-              onPointerMove={mutationsDisabled ? undefined : onMoveScheduleDrag}
-              onPointerUp={mutationsDisabled ? undefined : onEndScheduleDrag}
-            >
-              {!span.milestone && width > 80 ? (
-                <span>{row.task.title}</span>
-              ) : null}
-            </button>
-            {!span.milestone ? (
-              <>
-                <button
-                  aria-label={`Change ${row.task.title} scheduled date`}
-                  className="resize-grip is-start"
-                  disabled={mutationsDisabled}
-                  type="button"
-                  onKeyDown={(event) => keyboardMove(event, "resize-start")}
-                  onPointerCancel={onCancelScheduleDrag}
-                  onPointerDown={(event) =>
-                    onBeginScheduleDrag(event, row.task, "resize-start")
-                  }
-                  onPointerMove={onMoveScheduleDrag}
-                  onPointerUp={onEndScheduleDrag}
-                />
-                <button
-                  aria-label={`Change ${row.task.title} due date`}
-                  className="resize-grip is-finish"
-                  disabled={mutationsDisabled}
-                  type="button"
-                  onKeyDown={(event) => keyboardMove(event, "resize-finish")}
-                  onPointerCancel={onCancelScheduleDrag}
-                  onPointerDown={(event) =>
-                    onBeginScheduleDrag(event, row.task, "resize-finish")
-                  }
-                  onPointerMove={onMoveScheduleDrag}
-                  onPointerUp={onEndScheduleDrag}
-                />
-              </>
-            ) : null}
-            {!span.milestone ? (
-              <LinkPort
-                edge="start"
-                linkDrag={linkDrag}
-                mutationsDisabled={mutationsDisabled}
-                task={row.task}
-                onBegin={onBeginLink}
-                onCancel={onCancelLink}
-                onEnd={onEndLink}
-                onMove={onMoveLink}
-              />
-            ) : null}
-            <LinkPort
-              edge="finish"
-              linkDrag={linkDrag}
-              mutationsDisabled={mutationsDisabled}
-              task={row.task}
-              onBegin={onBeginLink}
-              onCancel={onCancelLink}
-              onEnd={onEndLink}
-              onMove={onMoveLink}
-            />
-          </div>
-        ) : (
-          <>
-            <button
-              className={`unscheduled-row-action${preview ? " is-preview" : ""}`}
-              type="button"
-              onClick={select}
-              onPointerCancel={
-                mutationsDisabled ? undefined : onCancelScheduleDrag
-              }
-              onPointerDown={
-                mutationsDisabled
-                  ? undefined
-                  : (event) => onBeginScheduleDrag(event, row.task, "place")
-              }
-              onPointerMove={mutationsDisabled ? undefined : onMoveScheduleDrag}
-              onPointerUp={mutationsDisabled ? undefined : onEndScheduleDrag}
-            >
-              <Minus aria-hidden="true" size={14} />
-              {mutationsDisabled
-                ? "Select to review"
-                : preview
-                  ? "Drop to schedule"
-                  : "Drag to schedule"}
-            </button>
-            {span ? (
-              <div
-                aria-hidden="true"
-                className="task-bar is-preview is-placement-preview"
-                style={{ left: startX + 3, width: Math.max(8, width - 6) }}
-              />
-            ) : null}
-          </>
-        )}
-      </div>
+            {inverted ? "Scheduled after due" : scheduleLabel(task)}
+          </small>
+        </span>
+        <span
+          aria-label={`${task.statusLabel}; ${task.priorityLabel} priority`}
+          className="ledger-state"
+          title={`${task.statusLabel} · ${task.priorityLabel} priority`}
+        >
+          <i style={{ background: task.statusColor }} />
+          <i style={{ background: task.priorityColor }} />
+        </span>
+        {task.blockedBy.length ? (
+          <GitBranch
+            aria-label={`${task.blockedBy.length} dependencies`}
+            size={14}
+          />
+        ) : null}
+      </button>
     </div>
   );
 }
 
-function LinkPort({
-  task,
-  edge,
-  linkDrag,
-  mutationsDisabled,
-  onBegin,
-  onMove,
-  onEnd,
-  onCancel,
-}: {
-  task: PlannerTask;
-  edge: "start" | "finish";
-  linkDrag: LinkDrag | null;
-  mutationsDisabled: boolean;
-  onBegin(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    task: PlannerTask,
-    edge: "start" | "finish",
-  ): void;
-  onMove(event: ReactPointerEvent<HTMLButtonElement>): void;
-  onEnd(event: ReactPointerEvent<HTMLButtonElement>): void;
-  onCancel(): void;
-}) {
-  const targeted =
-    linkDrag?.targetId === task.id && linkDrag.targetEdge === edge;
-  return (
-    <button
-      aria-label={`${edge === "start" ? "Start" : "Finish"} relationship handle for ${task.title}`}
-      className={`link-port is-${edge}${targeted ? " is-targeted" : ""}${targeted && linkDrag?.invalidReason ? " is-invalid" : ""}`}
-      data-edge={edge}
-      data-task-id={task.id}
-      disabled={mutationsDisabled}
-      type="button"
-      onPointerCancel={onCancel}
-      onPointerDown={(event) => onBegin(event, task, edge)}
-      onPointerMove={onMove}
-      onPointerUp={onEnd}
-    />
-  );
+/** The calendar scale whose day width equals Planner's authored cell width. */
+function calendarScale(scale: TimelineScale): CalendarTimelineScale {
+  const unit: CalendarTimelineScale["unit"] = scale.intraday
+    ? "hour"
+    : scale.cellWidth >= 22
+      ? "day"
+      : scale.cellWidth >= 10
+        ? "week"
+        : scale.cellWidth >= 6
+          ? "month"
+          : "quarter";
+  return {
+    unit,
+    unitWidth: scale.cellWidth * UNIT_DAYS[unit],
+    snapMinutes: scale.snapMinutes,
+  };
 }
 
-function DependencyLayer({
-  rows,
-  scale,
-  timelineWidth,
-  bodyHeight,
-  taskHeight,
-  linkDrag,
-}: {
-  rows: readonly GanttRow[];
-  scale: ReturnType<typeof timelineScale>;
-  timelineWidth: number;
-  bodyHeight: number;
-  taskHeight: number;
-  linkDrag: LinkDrag | null;
-}) {
-  let offset = 0;
-  const taskY = new Map<string, number>();
-  const tasks = new Map<string, PlannerTask>();
-  for (const row of rows) {
-    const height = row.kind === "group" ? GROUP_HEIGHT : taskHeight;
-    if (row.kind === "task") {
-      taskY.set(row.task.id, offset + height / 2);
-      tasks.set(row.task.id, row.task);
-    }
-    offset += height;
-  }
-  const paths: Array<{ key: string; d: string }> = [];
-  const scaleStartMinute = planningMinute(scale.start)!;
-  for (const row of rows) {
-    if (row.kind !== "task") continue;
-    const targetSpan = taskTimelineSpan(row.task, scale.snapMinutes);
-    const targetY = taskY.get(row.task.id);
-    if (!targetSpan || targetY === undefined) continue;
-    for (const dependency of row.task.blockedBy) {
-      const source = resolveDependencyTask([...tasks.values()], dependency.uid);
-      const sourceSpan = source
-        ? taskTimelineSpan(source, scale.snapMinutes)
-        : null;
-      const sourceY = source ? taskY.get(source.id) : undefined;
-      if (!sourceSpan || sourceY === undefined) continue;
-      const fromStart =
-        dependency.reltype === "STARTTOSTART" ||
-        dependency.reltype === "STARTTOFINISH";
-      const toEnd =
-        dependency.reltype === "FINISHTOFINISH" ||
-        dependency.reltype === "STARTTOFINISH";
-      const x1 = minuteX(
-        scaleStartMinute,
-        fromStart ? sourceSpan.startMinute : sourceSpan.endMinute,
-        scale.cellWidth,
-      );
-      const x2 = minuteX(
-        scaleStartMinute,
-        toEnd ? targetSpan.endMinute : targetSpan.startMinute,
-        scale.cellWidth,
-      );
-      paths.push({
-        key: `${dependency.uid}-${row.task.id}-${dependency.reltype}`,
-        d: dependencyPath(x1, sourceY, x2, targetY),
-      });
-    }
-  }
-  return (
-    <svg
-      aria-hidden="true"
-      className="dependency-layer"
-      height={bodyHeight}
-      style={{ left: "var(--task-column)" }}
-      viewBox={`0 0 ${timelineWidth} ${bodyHeight}`}
-      width={timelineWidth}
-    >
-      <defs>
-        <marker
-          id="dependency-arrow"
-          markerHeight="5"
-          markerWidth="5"
-          orient="auto"
-          refX="4"
-          refY="2.5"
-        >
-          <path d="M0,0 L5,2.5 L0,5 z" />
-        </marker>
-      </defs>
-      {paths.map((path) => (
-        <path d={path.d} key={path.key} markerEnd="url(#dependency-arrow)" />
-      ))}
-      {linkDrag ? (
-        <path
-          className={`link-preview${linkDrag.invalidReason ? " is-invalid" : ""}`}
-          d={dependencyPath(
-            linkDrag.startX,
-            linkDrag.startY,
-            linkDrag.currentX,
-            linkDrag.currentY,
-          )}
-          markerEnd="url(#dependency-arrow)"
-        />
-      ) : null}
-    </svg>
+function labelWidthOf(surface: HTMLElement): number {
+  return surface.ownerDocument.defaultView?.matchMedia?.(PHONE_QUERY).matches
+    ? LEDGER.phone.labelWidth
+    : LEDGER.wide.labelWidth;
+}
+
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia?.(query);
+      media?.addEventListener?.("change", onChange);
+      return () => media?.removeEventListener?.("change", onChange);
+    },
+    () => window.matchMedia?.(query).matches ?? false,
   );
 }
 
@@ -1305,67 +775,8 @@ function scheduleLabel(task: PlannerTask): string {
   return `${scheduleValueLabel(task.scheduled!)} — ${scheduleValueLabel(task.due ?? task.scheduled!)}`;
 }
 
-function timelineRowStyle(
-  scale: ReturnType<typeof timelineScale>,
-  timelineWidth: number,
-): CSSProperties {
-  return {
-    "--cell-width": `${scale.cellWidth}px`,
-    "--minor-cell-width": `${(scale.snapMinutes / DAY_MINUTES) * scale.cellWidth}px`,
-    "--workday-start": `${(8 / 24) * scale.cellWidth}px`,
-    "--workday-width": `${(10 / 24) * scale.cellWidth}px`,
-    width: timelineWidth,
-  } as CSSProperties;
-}
-
-function minuteX(startMinute: number, minute: number, dayWidth: number) {
-  return ((minute - startMinute) / DAY_MINUTES) * dayWidth;
-}
-
 function scheduleValueLabel(value: string): string {
   const time = /T(\d{2}:\d{2})/.exec(value)?.[1];
   const date = value.slice(0, 10);
   return time ? `${dateLabel(date)} ${time}` : dateLabel(date);
-}
-
-function dependencyPath(x1: number, y1: number, x2: number, y2: number) {
-  const bend = Math.max(14, Math.min(42, Math.abs(x2 - x1) / 2));
-  return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
-}
-
-function taskRowHeight(surface: HTMLElement): number {
-  const canvas = surface.querySelector<HTMLElement>(".gantt-canvas");
-  const value = canvas
-    ? getComputedStyle(canvas).getPropertyValue("--task-row-height")
-    : "";
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : TASK_HEIGHT;
-}
-
-function taskColumnWidth(surface: HTMLElement): number {
-  const canvas = surface.querySelector<HTMLElement>(".gantt-canvas");
-  const value = canvas
-    ? getComputedStyle(canvas).getPropertyValue("--task-column")
-    : "";
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : TASK_COLUMN;
-}
-
-function segmentDates(
-  days: readonly string[],
-  keyForDate: (date: string) => string,
-): Array<{ key: string; date: string; start: number; length: number }> {
-  const segments: Array<{
-    key: string;
-    date: string;
-    start: number;
-    length: number;
-  }> = [];
-  for (const [index, date] of days.entries()) {
-    const key = keyForDate(date);
-    const current = segments.at(-1);
-    if (current?.key === key) current.length += 1;
-    else segments.push({ key, date, start: index, length: 1 });
-  }
-  return segments;
 }
