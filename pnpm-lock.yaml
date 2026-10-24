@@ -736,7 +736,7 @@ packages:
       }
 
   '@tasknotes/calendar@file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz':
-    resolution: {integrity: sha512-NHZqzgWKh6CvFHCxh3wwZfDOsrcdsteUu1M5ClLsYDM+SbyUaNxLPbzSFeTEhDnCEj+0kfdEfPpB4/OEmt7zwA==, tarball: file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz}
+    resolution: {integrity: sha512-7Mb023LmY+an/rZY4ddUAMWEk7tEBodEbpoVYcrjr21q3S+qn05CZXWEUujpiDzF4D32PUBWn0Cs8EqEHPJsfw==, tarball: file:vendor/tasknotes-calendar-0.1.0-dev.0.tgz}
     version: 0.1.0-dev.0
     peerDependencies:
       react: '>=18'
