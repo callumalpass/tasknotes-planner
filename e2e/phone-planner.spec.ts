@@ -83,7 +83,7 @@ test("schedule dates and times have full-width rows on phones", async ({
   }
 });
 
-test("an unscheduled title can drop onto a date header and still opens the editor on click", async ({
+test("an unscheduled title can drop onto the timeline and still opens the editor on click", async ({
   page,
 }) => {
   await page.goto("/?demo=1");
@@ -94,10 +94,8 @@ test("an unscheduled title can drop onto a date header and still opens the edito
   const name = await title.locator("strong").innerText();
   const ledger = page.locator(".task-ledger-main").filter({ hasText: name });
   const source = await title.boundingBox();
-  const header = await page.locator(".timeline-header").boundingBox();
-  const corner = await page.locator(".gantt-corner").boundingBox();
-  if (!source || !header || !corner)
-    throw new Error("Drag geometry unavailable");
+  const corner = await page.locator(".tnc-tl-corner").boundingBox();
+  if (!source || !corner) throw new Error("Drag geometry unavailable");
   await page.mouse.move(
     source.x + source.width / 2,
     source.y + source.height / 2,
@@ -105,10 +103,8 @@ test("an unscheduled title can drop onto a date header and still opens the edito
   await page.mouse.down();
   await page.mouse.move(
     corner.x + corner.width + 200,
-    header.y + header.height / 2,
-    {
-      steps: 12,
-    },
+    source.y + source.height / 2,
+    { steps: 12 },
   );
   await page.mouse.up();
   await expect(page.locator(".gantt-interaction-message")).toHaveText(
@@ -129,7 +125,8 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/e2e/fixtures/phone-ledger.html");
     await page.getByLabel(/^Search tasks/).fill(phonePrefix);
-    await expect(page.locator(".task-row")).toHaveCount(2);
+    const rows = page.locator(".tnc-tl-row:not(.is-group)");
+    await expect(rows).toHaveCount(2);
     await page.evaluate(() => document.fonts.ready);
     for (const suffix of ["alpha", "beta"]) {
       const title = page
@@ -155,26 +152,14 @@ for (const width of [320, 390]) {
         }, suffix),
       ).toBe(true);
     }
-    for (const row of await page.locator(".task-row").all()) {
-      expect((await row.boundingBox())!.height).toBe(65);
-      expect((await row.locator(".task-ledger").boundingBox())!.height).toBe(
-        65,
-      );
-      expect((await row.locator(".timeline-row").boundingBox())!.height).toBe(
-        65,
-      );
+    for (const row of await rows.all()) {
       const bounds = (await row.boundingBox())!;
-      const action = (await row
-        .locator(".unscheduled-row-action")
-        .boundingBox())!;
-      expect(
-        Math.abs(action.y + action.height / 2 - bounds.y - bounds.height / 2),
-      ).toBeLessThanOrEqual(1);
+      expect(bounds.height).toBe(65);
+      const ledger = (await row.locator(".task-ledger").boundingBox())!;
+      const track = (await row.locator(".tnc-tl-track").boundingBox())!;
+      expect(ledger.y).toBe(track.y);
+      expect(ledger.height).toBe(track.height);
     }
-    await expect(page.locator(".dependency-layer")).toHaveAttribute(
-      "height",
-      "165",
-    );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width);

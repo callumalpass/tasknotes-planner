@@ -5,13 +5,17 @@ import {
   groupTasks,
   hasInvertedSchedule,
   replaceDatePart,
+  placedSchedule,
   replaceDateAndTime,
   resizedSchedule,
   resizedScheduleAt,
+  scheduleFromTimelineChange,
   shiftedSchedule,
   shiftedScheduleByMinutes,
+  taskTimelineItem,
   taskTimelineSpan,
   taskSpan,
+  timelineDependencies,
   timelineScale,
 } from "./gantt";
 
@@ -251,5 +255,81 @@ describe("groupTasks", () => {
 describe("addDays", () => {
   it("uses calendar days across daylight-saving boundaries", () => {
     expect(addDays("2026-10-03", 1)).toBe("2026-10-04");
+  });
+});
+
+describe("timeline items", () => {
+  it("draws due as an inclusive end and due-only work as a milestone", () => {
+    expect(
+      taskTimelineItem(
+        task({ scheduled: "2026-08-17", due: "2026-08-18" }),
+        1440,
+      ),
+    ).toEqual({
+      start: "2026-08-17",
+      end: "2026-08-19",
+      allDay: true,
+      milestone: false,
+    });
+    expect(taskTimelineItem(task({ due: "2026-08-20" }), 1440)).toEqual({
+      start: "2026-08-20",
+      end: "2026-08-21",
+      allDay: true,
+      milestone: true,
+    });
+    expect(
+      taskTimelineItem(task({ scheduled: "2026-08-17T09:30:00Z" }), 15),
+    ).toMatchObject({ start: "2026-08-17T09:30", end: "2026-08-17T09:45" });
+  });
+
+  it("writes exclusive timeline ends back as inclusive due dates", () => {
+    const span = task({ scheduled: "2026-08-17", due: "2026-08-18" });
+    expect(
+      scheduleFromTimelineChange(
+        span,
+        "resize-finish",
+        { start: "2026-08-17", end: "2026-08-21", allDay: true },
+        1440,
+      ),
+    ).toEqual({ scheduled: "2026-08-17", due: "2026-08-20" });
+    expect(
+      scheduleFromTimelineChange(
+        span,
+        "move",
+        { start: "2026-08-14", end: "2026-08-16", allDay: true },
+        1440,
+      ),
+    ).toEqual({ scheduled: "2026-08-14", due: "2026-08-15" });
+    expect(
+      scheduleFromTimelineChange(
+        task({ due: "2026-08-20" }),
+        "move",
+        { start: "2026-08-22", end: "2026-08-23", allDay: true },
+        1440,
+      ),
+    ).toEqual({ scheduled: undefined, due: "2026-08-22" });
+    expect(placedSchedule("2026-08-17T10:15", false)).toEqual({
+      scheduled: "2026-08-17T10:15:00",
+      due: undefined,
+    });
+  });
+});
+
+describe("timelineDependencies", () => {
+  it("keeps each relationship's type so start-to-start is not read as finish-to-start", () => {
+    const copy = task({ id: "copy", path: "tasks/Copy.md" });
+    const prototype = task({ id: "prototype", path: "tasks/Prototype.md" });
+    const qa = task({
+      id: "qa",
+      blockedBy: [
+        { uid: "prototype", reltype: "FINISHTOSTART" },
+        { uid: "tasks/Copy.md", reltype: "STARTTOSTART" },
+        { uid: "tasks/missing.md", reltype: "FINISHTOFINISH" },
+      ],
+    });
+    expect(timelineDependencies(qa, [copy, prototype, qa])).toEqual([
+      { id: "prototype", type: "FS" },
+      { id: "copy", type: "SS" },
+    ]);
   });
 });

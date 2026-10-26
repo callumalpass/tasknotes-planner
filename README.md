@@ -62,11 +62,13 @@ staging, or production app; TaskNotes still owns its own sign-in and approval.
   zooms around the pointer.
 - Drag a task bar to move its whole schedule. Drag either end to change its
   scheduled or due date. Drag an unscheduled row into the timeline to place it.
-- Focus a bar and use `Alt` + Left/Right Arrow for one-day keyboard moves. The
-  resize grips support Left/Right Arrow directly.
-- Drag from the small handle below either end of one bar to an end of another
-  bar to create the corresponding start/finish relationship. Cycles and
-  self-links are rejected.
+- Focus a bar and use `Alt` + Left/Right Arrow for one-day keyboard moves, or
+  `Alt` + `Shift` + Left/Right Arrow to change its end.
+- Drag from the handle at the end of one bar onto another bar to make the
+  second task blocked by the first (finish-to-start). Set other relationship
+  types in the inspector. Cycles and self-links are rejected.
+- On touch screens, press and hold a bar or an unscheduled title before
+  dragging it.
 - Select a task to edit dates, status, priority, ordered project memberships,
   dependencies, or relationship types in the inspector.
 
@@ -166,5 +168,5 @@ src/components   React application and Gantt surface
 src/data         mdbase connection and repository adapters
 src/domain       task and timeline semantics
 public           web and mdbase application manifests
-vendor           pinned TaskNotes model and mdbase Connect packages
+vendor           pinned development mdbase packages and contract packs
 ```
