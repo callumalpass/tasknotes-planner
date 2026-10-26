@@ -168,5 +168,5 @@ src/components   React application and Gantt surface
 src/data         mdbase connection and repository adapters
 src/domain       task and timeline semantics
 public           web and mdbase application manifests
-vendor           pinned TaskNotes model and mdbase Connect packages
+vendor           pinned development mdbase packages and contract packs
 ```
