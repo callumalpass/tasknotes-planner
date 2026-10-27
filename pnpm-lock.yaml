@@ -27,8 +27,8 @@ importers:
         specifier: file:vendor/ui-dev-9553ad66.tgz
         version: file:vendor/ui-dev-9553ad66.tgz(@mdbase-dev/sdk@file:vendor/mdbase-dev-sdk-dev-0ecbef41.tgz)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       "@tasknotes/calendar":
-        specifier: 0.1.0
-        version: 0.1.0(react@19.2.8)
+        specifier: 0.1.2
+        version: 0.1.2(react@19.2.8)
       "@tasknotes/model":
         specifier: 0.3.0-rc.17
         version: 0.3.0-rc.17
@@ -735,10 +735,10 @@ packages:
         integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==,
       }
 
-  "@tasknotes/calendar@0.1.0":
+  "@tasknotes/calendar@0.1.2":
     resolution:
       {
-        integrity: sha512-XT/V+eyfQ3ULun1LhcwRho33xRhg8QYrybzQuQWH9Csw5ZBH8OG3nADXk3WPMG07zrFPTTBPlE/xX5JZ9ibdbw==,
+        integrity: sha512-Ts1UXOD0hoLC+i6lYM0Eo430nwza9sbyKm6HekSWF8rRSC2vTQi8Risyh8mS1mJcDHnvtA24ZKymk14sf2+syA==,
       }
     engines: { node: ">=22" }
     peerDependencies:
@@ -2707,7 +2707,7 @@ snapshots:
 
   "@standard-schema/spec@1.1.0": {}
 
-  "@tasknotes/calendar@0.1.0(react@19.2.8)":
+  "@tasknotes/calendar@0.1.2(react@19.2.8)":
     optionalDependencies:
       react: 19.2.8
 
