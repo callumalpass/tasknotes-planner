@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Root } from "./components/root";
+import SdkApp from "./components/sdk-app";
 
 type AppGrantModule = Pick<
   typeof import("@mdbase-dev/sdk/app-grant"),
@@ -31,16 +31,14 @@ export async function deliverAppGrantReturn(
   (await load()).deliverAppGrantCallback(href);
 }
 
-/** What the page renders. In LAB builds (the SDK entry) a consent popup return
- * delivers its result without starting a second SDK entry. The original SDK
- * owns close only after Native finish and original custody ACK.
- * Other builds keep Connect, which owns its own callback on the same route. */
+/** What the page renders. A consent popup return delivers its result without
+ * starting a second SDK entry; the original SDK owns close only after Native
+ * finish and original custody ACK. */
 export function pageFor(
   href: string,
-  environment: string | undefined,
   deliver: (href: string) => Promise<void> = deliverAppGrantReturn,
 ): ReactNode {
-  if (environment !== "lab" || !isAppGrantCallback(href)) return <Root />;
+  if (!isAppGrantCallback(href)) return <SdkApp />;
   void deliver(href).catch(() => {});
   return <p className="grant-return">You can close this window.</p>;
 }

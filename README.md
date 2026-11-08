@@ -118,8 +118,9 @@ pnpm deploy:dev
 ```
 
 This deploys only the Cloudflare `staging` branch at
-`https://staging.tasknotes-planner.pages.dev`, using staging Connect and the
-staging desktop connector on `127.0.0.1:28486`. It does not change production.
+`https://staging.tasknotes-planner.pages.dev`, built for the mdbase staging
+environment. `pnpm deploy:lab` deploys the `lab` branch for LAB. Neither
+changes production.
 
 Production and development builds generate separate mdbase manifests. The
 production declaration contains only the `planner.tasknotes.dev` callback;
@@ -147,19 +148,16 @@ saved-view source deletion. Saved-view deletion is not record deletion, and no
 independent operation permission is requested. Task creation also requires the
 `add` file action; an older approval without it needs renewed consent. Record
 deletion, arbitrary file operations, offline replicas, and background scheduling
-remain excluded. See
-[the migration guard and rollout order](docs/capability-v2-migration.md): the
-vendored beta96 v2 candidate SDK is source-bound development evidence, not a published or
-signed release. This v2 draft must not deploy before the qualified v2 writer.
+remain excluded.
 
 The production declaration assumes `https://planner.tasknotes.dev/`. Update the
 homepage, icon, and redirect URI together if the deployment origin changes.
 
-## New SDK migration
+## mdbase SDK
 
-The existing Connect session remains the default. A native SDK data adapter is
-being prepared separately; it is not yet a browser sign-in mode. See
-[its behavior, pinned artifact, and remaining dependencies](docs/new-sdk.md).
+Planner opens collections through the published `@mdbase-dev/sdk` and the
+shared `@mdbase-dev/ui` collection gate. See
+[the SDK data layer](docs/new-sdk.md).
 
 ## Repository structure
 
@@ -168,5 +166,5 @@ src/components   React application and Gantt surface
 src/data         mdbase connection and repository adapters
 src/domain       task and timeline semantics
 public           web and mdbase application manifests
-vendor           pinned development mdbase packages and contract packs
+vendor           pinned mdbase contract packs
 ```

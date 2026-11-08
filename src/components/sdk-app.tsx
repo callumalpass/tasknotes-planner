@@ -19,7 +19,7 @@ const app = {
   mark: <img alt="" src="/tasknotes-mark.svg" />,
 };
 
-/** Planner over the page's one SDK entry (LAB builds; see root.tsx). The
+/** Planner over the page's one SDK entry. The
  * shared collection UI owns sign-in, the collection list, setup and problems,
  * and starts the entry (never closed here: it is the page's singleton). */
 export default function SdkApp({ mdbase: supplied }: { mdbase?: Mdbase } = {}) {

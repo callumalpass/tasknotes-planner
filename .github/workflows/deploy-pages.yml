@@ -39,8 +39,6 @@ jobs:
         run: pnpm build
         env:
           TASKNOTES_PLANNER_URL: https://planner.tasknotes.dev
-          VITE_MDBASE_CONNECT_URL: https://connect.mdbase.dev
-          VITE_MDBASE_CONNECT_LOOPBACK_URL: http://127.0.0.1:28485
       - name: Deploy Cloudflare Pages
         run: pnpm dlx wrangler@4.114.0 pages deploy dist --project-name=tasknotes-planner --branch=main
         env:

@@ -10,14 +10,6 @@ export default defineConfig({
   worker: { format: "es" },
   build: {
     chunkSizeWarningLimit: 560,
-    rollupOptions: {
-      output: {
-        manualChunks: (id) =>
-          id.includes("/node_modules/@mdbase-dev/connect")
-            ? "mdbase-connect"
-            : undefined,
-      },
-    },
   },
   server: {
     host: "127.0.0.1",

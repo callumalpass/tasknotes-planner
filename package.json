@@ -8,8 +8,8 @@
     "contracts:sync": "node scripts/sync-canonical-task-pack.mjs",
     "manifest": "node scripts/write-manifest.mjs",
     "manifest:dev": "node scripts/write-manifest.mjs --development",
-    "dev": "pnpm manifest:dev && vite",
-    "dev:e2e": "pnpm manifest:dev && vite --mode e2e",
+    "dev": "pnpm manifest:dev && VITE_MDBASE_ENV=lab vite",
+    "dev:e2e": "pnpm manifest:dev && VITE_MDBASE_ENV=lab vite --mode e2e",
     "deploy:dev": "node scripts/deploy-pages-dev.mjs",
     "deploy:lab": "MDBASE_ENV=lab node scripts/deploy-pages-dev.mjs",
     "deploy:production": "node scripts/deploy-pages-production.mjs",
@@ -29,9 +29,8 @@
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "5.3.0",
     "@fontsource/azeret-mono": "5.3.0",
-    "@mdbase-dev/connect": "file:vendor/mdbase-dev-connect-0.1.0-beta.96-56ed32ffde05.tgz",
-    "@mdbase-dev/sdk": "file:vendor/mdbase-dev-sdk-dev-0ecbef41.tgz",
-    "@mdbase-dev/ui": "file:vendor/ui-dev-9553ad66.tgz",
+    "@mdbase-dev/sdk": "0.1.0-beta.162",
+    "@mdbase-dev/ui": "0.1.0-beta.160",
     "@tasknotes/calendar": "0.1.2",
     "@tasknotes/model": "0.3.0-rc.17",
     "lucide-react": "1.25.0",
@@ -41,7 +40,6 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@mdbase-dev/connect-protocol": "file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz",
     "@playwright/test": "1.61.1",
     "@testing-library/jest-dom": "7.0.0",
     "@testing-library/react": "16.3.2",
@@ -59,11 +57,5 @@
     "typescript-eslint": "8.65.0",
     "vite": "8.1.5",
     "vitest": "4.1.10"
-  },
-  "pnpm": {
-    "overrides": {
-      "@mdbase-dev/connect-protocol": "file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.129-d765e675c3da.tgz",
-      "@mdbase-dev/connect-sync": "file:vendor/mdbase-dev-connect-sync-0.1.0-beta.96-56ed32ffde05.tgz"
-    }
   }
 }

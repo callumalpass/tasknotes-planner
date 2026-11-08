@@ -9,9 +9,7 @@ const deployment = plannerDeploymentFor(process.env);
 const environment = {
   ...process.env,
   TASKNOTES_PLANNER_URL: deployment.appOrigin,
-  ...(deployment.branch === "lab" ? { VITE_MDBASE_ENV: "lab" } : {}),
-  VITE_MDBASE_CONNECT_URL: deployment.connectOrigin,
-  VITE_MDBASE_CONNECT_LOOPBACK_URL: deployment.loopbackOrigin,
+  VITE_MDBASE_ENV: deployment.branch,
 };
 
 await buildWithTemporaryManifest(environment, () =>

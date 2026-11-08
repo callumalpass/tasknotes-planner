@@ -9,7 +9,7 @@ import "./styles.css";
 
 // Decided once, before anything renders: a consent popup return never starts
 // the SDK entry.
-const page = pageFor(location.href, import.meta.env.VITE_MDBASE_ENV);
+const page = pageFor(location.href);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>{page}</StrictMode>,

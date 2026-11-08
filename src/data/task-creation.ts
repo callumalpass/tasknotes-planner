@@ -1,8 +1,8 @@
 import { taskInfoToSpecFields } from "@tasknotes/model/operations";
 import { validateTask } from "@tasknotes/model/validation";
 import { getCurrentDateString } from "@tasknotes/model/date";
-import type { JsonObject } from "@mdbase-dev/connect";
-import type { TaskTypeConfiguration } from "./mdbase-repository";
+import type { PlainValue } from "@mdbase-dev/sdk";
+import type { TaskTypeConfiguration } from "./planner-mapping";
 
 /** The same portable fields TaskNotes writes; the SDK maps contract roles to
  * the selected implementing type. Never mint a Planner-specific task type. */
@@ -10,7 +10,7 @@ export function taskCreationFields(
   title: string,
   id: string,
   config: TaskTypeConfiguration,
-): JsonObject {
+): Record<string, PlainValue> {
   const now = new Date().toISOString();
   const task = {
     title: title.trim(),
@@ -34,7 +34,7 @@ export function taskCreationFields(
     Object.entries({ id, ...taskInfoToSpecFields(task) }).filter(
       ([role]) => config.fields[role],
     ),
-  ) as JsonObject;
+  ) as Record<string, PlainValue>;
 }
 
 /** Native path patterns belong to mdbase. TaskNotes runtime templates do not:

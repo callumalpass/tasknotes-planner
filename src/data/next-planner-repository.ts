@@ -21,7 +21,6 @@ import { stringify } from "yaml";
 import { parseFrontmatter } from "@tasknotes/model/frontmatter";
 import { taskCreationFields, taskCreationPath } from "./task-creation";
 import { isOperationOutcomeUnknown } from "./outcome";
-import type { JsonObject } from "@mdbase-dev/connect";
 import type {
   PlannerCollection,
   PlannerRepository,
@@ -41,7 +40,7 @@ import {
   plannerViewDefinition,
   taskTypeConfigurations,
   type TaskTypeConfiguration,
-} from "./mdbase-repository";
+} from "./planner-mapping";
 import {
   NextPlannerViews,
   type NextPlannerViewAccess,
@@ -235,7 +234,7 @@ export class NextPlannerRepository implements PlannerRepository {
             ? []
             : [[field, next[field] ?? null]],
         ),
-      ) as JsonObject;
+      ) as Record<string, PlainValue>;
     });
   }
 
@@ -355,7 +354,7 @@ export class NextPlannerRepository implements PlannerRepository {
     patch: (
       record: wire.RecordView,
       config: TaskTypeConfiguration,
-    ) => JsonObject,
+    ) => Record<string, unknown>,
   ): Promise<PlannerTask> {
     const signal = this.signal();
     await this.revalidateConfigurations(signal);
@@ -554,7 +553,7 @@ function configurationSignature(
 function canonical(
   record: wire.RecordView,
   config: TaskTypeConfiguration,
-): JsonObject {
+): Record<string, PlainValue> {
   const raw = Object.fromEntries(
     [...(record.effective ?? record.frontmatter)].map(([key, value]) => [
       key,
@@ -565,7 +564,7 @@ function canonical(
     Object.entries(config.fields).flatMap(([role, field]) =>
       raw[field] === undefined ? [] : [[role, raw[field]]],
     ),
-  ) as JsonObject;
+  ) as Record<string, PlainValue>;
 }
 
 function task(
@@ -581,7 +580,7 @@ function task(
           key,
           toPlain(value),
         ]),
-      ) as JsonObject,
+      ) as Record<string, PlainValue>,
     },
     configurations,
   );

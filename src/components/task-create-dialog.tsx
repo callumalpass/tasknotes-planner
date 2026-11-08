@@ -6,14 +6,12 @@ import { useModalFocus } from "./use-modal-focus";
 /** One form draft is one creation intent, including a retry after a lost reply. */
 export function TaskCreateDialog({
   open,
-  disabled,
   repository,
   onClose,
   onCreated,
   onSettled,
 }: {
   open: boolean;
-  disabled: boolean;
   repository: PlannerRepository;
   onClose(): void;
   onCreated(task: PlannerTask): void;
@@ -41,7 +39,7 @@ export function TaskCreateDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (pending.current || disabled || !draft.title.trim()) return;
+    if (pending.current || !draft.title.trim()) return;
     pending.current = true;
     setBusy(true);
     setFailure(null);
@@ -100,7 +98,7 @@ export function TaskCreateDialog({
           <button
             className="primary-action"
             type="submit"
-            disabled={busy || disabled || !draft.title.trim()}
+            disabled={busy || !draft.title.trim()}
           >
             {busy ? "Adding…" : "Add task"}
           </button>

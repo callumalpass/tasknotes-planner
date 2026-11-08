@@ -34,7 +34,6 @@ import type { FormEvent } from "react";
 export function TaskInspector({
   task,
   allTasks,
-  mutationsDisabled = false,
   onClose,
   onSave,
   onSaveDependencies,
@@ -42,7 +41,6 @@ export function TaskInspector({
 }: {
   task: PlannerTask;
   allTasks: readonly PlannerTask[];
-  mutationsDisabled?: boolean;
   onClose(): void;
   onSave(task: PlannerTask, update: ScheduleUpdate): Promise<void>;
   onSaveDependencies(
@@ -125,7 +123,7 @@ export function TaskInspector({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (validation || mutationsDisabled) return;
+    if (validation) return;
     setSaving(true);
     setScheduleError("");
     try {
@@ -141,7 +139,6 @@ export function TaskInspector({
   }
 
   async function saveDependencies(dependencies: readonly TaskDependency[]) {
-    if (mutationsDisabled) return;
     setDependencySaving(true);
     setDependencyError("");
     try {
@@ -154,7 +151,7 @@ export function TaskInspector({
   }
 
   async function addDependency() {
-    if (!dependencySource || mutationsDisabled) return;
+    if (!dependencySource) return;
     const allowed = canAddDependency(allTasks, dependencySource, task.id);
     if (!allowed.allowed) {
       setDependencyError(allowed.reason);
@@ -172,7 +169,6 @@ export function TaskInspector({
   }
 
   async function saveProperty(update: TaskPropertyUpdate) {
-    if (mutationsDisabled) return;
     setPropertySaving(true);
     setPropertyError("");
     try {
@@ -220,7 +216,7 @@ export function TaskInspector({
         <label className="planning-field">
           <span>Status</span>
           <select
-            disabled={propertySaving || mutationsDisabled}
+            disabled={propertySaving}
             value={status}
             onChange={(event) => {
               const value = event.target.value;
@@ -238,7 +234,7 @@ export function TaskInspector({
         <label className="planning-field">
           <span>Priority</span>
           <select
-            disabled={propertySaving || mutationsDisabled}
+            disabled={propertySaving}
             value={priority}
             onChange={(event) => {
               const value = event.target.value;
@@ -253,10 +249,7 @@ export function TaskInspector({
             ))}
           </select>
         </label>
-        <fieldset
-          className="project-field"
-          disabled={propertySaving || mutationsDisabled}
-        >
+        <fieldset className="project-field" disabled={propertySaving}>
           <legend>Projects</legend>
           <p>Planner groups tasks by their first selected project.</p>
           {projectOptions.length ? (
@@ -337,14 +330,13 @@ export function TaskInspector({
           <div className="date-time-inputs">
             <input
               aria-label="Scheduled"
-              disabled={mutationsDisabled}
               type="date"
               value={scheduled}
               onChange={(event) => setScheduled(event.target.value)}
             />
             <input
               aria-label="Scheduled time"
-              disabled={mutationsDisabled || !scheduled}
+              disabled={!scheduled}
               step="900"
               type="time"
               value={scheduledTime}
@@ -357,14 +349,13 @@ export function TaskInspector({
           <div className="date-time-inputs">
             <input
               aria-label="Due"
-              disabled={mutationsDisabled}
               type="date"
               value={due}
               onChange={(event) => setDue(event.target.value)}
             />
             <input
               aria-label="Due time"
-              disabled={mutationsDisabled || !due}
+              disabled={!due}
               step="900"
               type="time"
               value={dueTime}
@@ -384,7 +375,7 @@ export function TaskInspector({
         <div className="inspector-actions">
           <button
             className="text-action"
-            disabled={saving || mutationsDisabled || (!scheduled && !due)}
+            disabled={saving || (!scheduled && !due)}
             type="button"
             onClick={() => {
               setScheduled("");
@@ -397,7 +388,7 @@ export function TaskInspector({
           </button>
           <button
             className="save-action"
-            disabled={saving || mutationsDisabled || Boolean(validation)}
+            disabled={saving || Boolean(validation)}
             type="submit"
           >
             {saving ? "Saving…" : "Save schedule"}
@@ -417,7 +408,7 @@ export function TaskInspector({
                 <span>{dependency.title}</span>
                 <select
                   aria-label={`Relationship from ${dependency.title}`}
-                  disabled={dependencySaving || mutationsDisabled}
+                  disabled={dependencySaving}
                   value={dependency.reltype}
                   onChange={(event) =>
                     void saveDependencies(
@@ -441,7 +432,7 @@ export function TaskInspector({
                 </select>
                 <button
                   aria-label={`Remove relationship from ${dependency.title}`}
-                  disabled={dependencySaving || mutationsDisabled}
+                  disabled={dependencySaving}
                   type="button"
                   onClick={() =>
                     void saveDependencies(
@@ -464,7 +455,6 @@ export function TaskInspector({
             <label>
               <span className="sr-only">Blocking task</span>
               <select
-                disabled={mutationsDisabled}
                 value={dependencySource}
                 onChange={(event) => setDependencySource(event.target.value)}
               >
@@ -479,7 +469,6 @@ export function TaskInspector({
             <label>
               <span className="sr-only">Relationship type</span>
               <select
-                disabled={mutationsDisabled}
                 value={dependencyType}
                 onChange={(event) =>
                   setDependencyType(event.target.value as TaskDependencyRelType)
@@ -494,9 +483,7 @@ export function TaskInspector({
             </label>
             <button
               aria-label="Add relationship"
-              disabled={
-                !dependencySource || dependencySaving || mutationsDisabled
-              }
+              disabled={!dependencySource || dependencySaving}
               type="button"
               onClick={() => void addDependency()}
             >

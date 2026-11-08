@@ -13,3 +13,5 @@
 - Drag an unscheduled task by its title onto a date in the timeline or its header. Drops outside the timeline explain why the schedule stayed unchanged; clicking a title still opens the task editor.
 
 - Keep Save view available at phone widths as a labelled icon button, instead of hiding it.
+
+- Open collections through the published mdbase SDK and shared collection screens in every deployment, replacing the retired legacy Connect session. The legacy pending-change recovery banner is gone; unconfirmed writes are kept and settled by the SDK.
