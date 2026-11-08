@@ -2,9 +2,9 @@
   "manifest_version": 1,
   "id": "dev.tasknotes.planner",
   "name": "TaskNotes Planner",
-  "homepage": "http://127.0.0.1:4174/",
-  "icon": "http://127.0.0.1:4174/tasknotes-mark.svg",
-  "redirect_uris": ["http://127.0.0.1:4174/auth/mdbase/callback"],
+  "homepage": "https://planner.tasknotes.dev/",
+  "icon": "https://planner.tasknotes.dev/tasknotes-mark.svg",
+  "redirect_uris": ["https://planner.tasknotes.dev/auth/mdbase/callback"],
   "requirements": {
     "contracts": [
       {
