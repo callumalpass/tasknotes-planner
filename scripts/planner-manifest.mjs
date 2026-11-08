@@ -1,4 +1,4 @@
-import { parseAppManifest } from "@mdbase-dev/connect-protocol/manifest";
+import { parseAppManifest } from "@mdbase-dev/sdk/manifest";
 
 import {
   loadCanonicalBasesTypePack,

@@ -6,13 +6,10 @@ import { verifyPlannerBuild } from "./verify-build.mjs";
 const deployment = Object.freeze({
   appOrigin: "https://planner.tasknotes.dev",
   connectOrigin: "https://connect.mdbase.dev",
-  loopbackOrigin: "http://127.0.0.1:28485",
 });
 const environment = {
   ...process.env,
   TASKNOTES_PLANNER_URL: deployment.appOrigin,
-  VITE_MDBASE_CONNECT_URL: deployment.connectOrigin,
-  VITE_MDBASE_CONNECT_LOOPBACK_URL: deployment.loopbackOrigin,
 };
 
 await run("pnpm", ["build"], environment);

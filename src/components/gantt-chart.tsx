@@ -71,7 +71,6 @@ interface GanttChartProps {
   zoom: TimelineZoom;
   selectedId: string | null;
   todayRequest: number;
-  mutationsDisabled?: boolean;
   onSelect(task: PlannerTask): void;
   onZoom(direction: -1 | 1): void;
   onScheduleChange(task: PlannerTask, update: ScheduleUpdate): Promise<void>;
@@ -99,7 +98,6 @@ function GanttTimeline({
   zoom,
   selectedId,
   todayRequest,
-  mutationsDisabled = false,
   onSelect,
   onZoom,
   onScheduleChange,
@@ -182,7 +180,6 @@ function GanttTimeline({
     task: PlannerTask,
     update: ScheduleUpdate,
   ): Promise<boolean> {
-    if (mutationsDisabled) return false;
     showMessage({ tone: "neutral", text: "Saving schedule…" }, 10_000);
     try {
       await onScheduleChange(task, update);
@@ -206,7 +203,6 @@ function GanttTimeline({
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
   ) {
-    if (mutationsDisabled) return;
     showMessage({ tone: "neutral", text: "Saving relationship…" }, 10_000);
     try {
       await onDependenciesChange(task, dependencies);
@@ -225,7 +221,6 @@ function GanttTimeline({
   }
 
   async function commitCompletion(task: PlannerTask) {
-    if (mutationsDisabled) return;
     if (task.recurrence) {
       showMessage(
         {
@@ -329,7 +324,7 @@ function GanttTimeline({
     task: PlannerTask,
   ) {
     const calendar = calendarRef.current;
-    if (mutationsDisabled || event.button !== 0 || !calendar) return;
+    if (event.button !== 0 || !calendar) return;
     const origin = event.nativeEvent;
     const doc = event.currentTarget.ownerDocument;
     const touch = origin.pointerType === "touch";
@@ -384,8 +379,6 @@ function GanttTimeline({
   }
 
   function itemLabel(task: PlannerTask): string {
-    if (mutationsDisabled)
-      return `${task.title}, ${scheduleLabel(task)}. Select to review.`;
     const step =
       scale.intraday && taskHasTime(task)
         ? scale.snapMinutes === 15
@@ -401,7 +394,7 @@ function GanttTimeline({
     toolbar: false,
     timeZone: "local",
     height: "fill",
-    editable: !mutationsDisabled,
+    editable: true,
     selectable: false,
     navLinks: false,
     selected: selectedId,
@@ -430,14 +423,10 @@ function GanttTimeline({
           next.delete(row.id);
           return next;
         }),
-      resizeHandleLabel: mutationsDisabled
-        ? undefined
-        : ({ item, edge }) =>
-            `Change ${item.title} ${edge === "start" ? "scheduled" : "due"} date`,
-      onLink: mutationsDisabled
-        ? undefined
-        : ({ from, to, fromEdge, toEdge }) =>
-            linkTasks(from.id, to.id, fromEdge, toEdge),
+      resizeHandleLabel: ({ item, edge }) =>
+        `Change ${item.title} ${edge === "start" ? "scheduled" : "due"} date`,
+      onLink: ({ from, to, fromEdge, toEdge }) =>
+        linkTasks(from.id, to.id, fromEdge, toEdge),
       canLink: ({ from, to }) => {
         const allowed = canAddDependency(allTasks, from.id, to.id);
         return allowed.allowed || allowed.reason;
@@ -559,7 +548,6 @@ function GanttTimeline({
           ) : (
             <TaskLedger
               completionPending={completionPending.has(row.task.id)}
-              mutationsDisabled={mutationsDisabled}
               selected={selectedId === row.task.id}
               task={row.task}
               onBeginPlacement={beginPlacement}
@@ -596,7 +584,6 @@ function TaskLedger({
   task,
   selected,
   completionPending,
-  mutationsDisabled,
   onSelect,
   onCompletionChange,
   onBeginPlacement,
@@ -604,7 +591,6 @@ function TaskLedger({
   task: PlannerTask;
   selected: boolean;
   completionPending: boolean;
-  mutationsDisabled: boolean;
   onSelect(task: PlannerTask): void;
   onCompletionChange(task: PlannerTask): Promise<void>;
   onBeginPlacement(
@@ -613,7 +599,7 @@ function TaskLedger({
   ): void;
 }) {
   const inverted = hasInvertedSchedule(task);
-  const placeable = !taskSpan(task) && !mutationsDisabled;
+  const placeable = !taskSpan(task);
   return (
     <div className={`task-ledger${selected ? " is-selected" : ""}`}>
       <button
@@ -625,7 +611,7 @@ function TaskLedger({
             : `${task.completed ? "Reopen" : "Complete"} ${task.title}`
         }
         className="completion-control"
-        disabled={completionPending || mutationsDisabled}
+        disabled={completionPending}
         title={
           task.recurrence
             ? "Complete recurring tasks in TaskNotes, where you can choose an occurrence."

@@ -160,31 +160,6 @@ describe("GanttChart interactions", () => {
     expect(onScheduleChange).not.toHaveBeenCalled();
   });
 
-  it("gates timeline writes while keeping task selection available", () => {
-    const task = makeTask({
-      id: "blocked",
-      title: "Blocked task",
-      scheduled: "2026-08-17",
-      due: "2026-08-18",
-    });
-    const { onSelect, onScheduleChange, onCompletionChange } = renderChart(
-      [task],
-      { mutationsDisabled: true },
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Complete Blocked task" }),
-    ).toBeDisabled();
-    expect(bar("blocked")).not.toHaveClass("is-draggable");
-    expect(bar("blocked").querySelector(".tnc-port, .tnc-resize")).toBeNull();
-
-    fireEvent.keyDown(bar("blocked"), { altKey: true, key: "ArrowRight" });
-    fireEvent.click(bar("blocked"));
-    expect(onSelect).toHaveBeenCalledWith(task);
-    expect(onScheduleChange).not.toHaveBeenCalled();
-    expect(onCompletionChange).not.toHaveBeenCalled();
-  });
-
   it("zooms with Ctrl+wheel inside the chart and leaves plain wheel scrolling alone", () => {
     const task = makeTask({ id: "zoomable", scheduled: "2026-08-17" });
     const { onZoom } = renderChart([task]);

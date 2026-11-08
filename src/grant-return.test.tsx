@@ -4,8 +4,8 @@ const sdk = vi.hoisted(() => ({ plannerMdbase: vi.fn() }));
 vi.mock("./data/sdk-application", () => ({
   plannerMdbase: sdk.plannerMdbase,
 }));
-vi.mock("./components/root", () => ({
-  Root: () => {
+vi.mock("./components/sdk-app", () => ({
+  default: () => {
     sdk.plannerMdbase();
     return <p>planner</p>;
   },
@@ -41,10 +41,10 @@ describe("Private collection consent popup return", () => {
     expect(deliverAppGrantCallback).toHaveBeenCalledWith(callback);
   });
 
-  it("in LAB, delivers without self-closing or starting another SDK entry", async () => {
+  it("delivers without self-closing or starting another SDK entry", async () => {
     const deliver = vi.fn(async () => {});
     const close = vi.spyOn(window, "close");
-    render(<>{pageFor(callback, "lab", deliver)}</>);
+    render(<>{pageFor(callback, deliver)}</>);
     expect(screen.getByText("You can close this window.")).toBeTruthy();
     expect(deliver).toHaveBeenCalledWith(callback);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -53,15 +53,10 @@ describe("Private collection consent popup return", () => {
     close.mockRestore();
   });
 
-  it("renders the app for any other page, and leaves Connect's callback to Connect", () => {
+  it("renders the app for any other page", () => {
     const deliver = vi.fn(async () => {});
-    render(
-      <>
-        {pageFor("http://127.0.0.1:48221/", "lab", deliver)}
-        {pageFor(callback, "production", deliver)}
-      </>,
-    );
-    expect(screen.getAllByText("planner")).toHaveLength(2);
+    render(<>{pageFor("http://127.0.0.1:48221/", deliver)}</>);
+    expect(screen.getByText("planner")).toBeTruthy();
     expect(deliver).not.toHaveBeenCalled();
   });
 });

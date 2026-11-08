@@ -6,7 +6,6 @@ test("Planner LAB is an explicit fixed target; prior staging default is unchange
   assert.deepEqual(plannerDeploymentFor({ MDBASE_ENV: "lab" }), {
     appOrigin: "https://lab.tasknotes-planner.pages.dev",
     connectOrigin: "https://connect-lab.mdbase.dev",
-    loopbackOrigin: "http://127.0.0.1:28487",
     branch: "lab",
   });
   assert.equal(plannerDeploymentFor({}).branch, "staging");

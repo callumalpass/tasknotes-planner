@@ -13,7 +13,6 @@ beforeEach(() => {
   );
   HTMLElement.prototype.scrollTo = vi.fn();
   vi.stubEnv("VITE_MDBASE_ENV", "");
-  vi.stubEnv("VITE_MDBASE_CONNECT_URL", "");
 });
 afterEach(() => {
   cleanup();
@@ -38,22 +37,13 @@ async function showCollection(patch: Partial<PlannerCollection> = {}) {
 
 describe("Planner empty states", () => {
   it.each([
-    [
-      "lab",
-      "https://connect-lab.mdbase.dev",
-      "https://lab.tasknotes-app.pages.dev",
-    ],
-    [
-      "",
-      "https://connect-staging.mdbase.dev",
-      "https://staging.tasknotes-app.pages.dev",
-    ],
-    ["", "", "https://app.tasknotes.dev"],
+    ["lab", "https://lab.tasknotes-app.pages.dev"],
+    ["staging", "https://staging.tasknotes-app.pages.dev"],
+    ["", "https://app.tasknotes.dev"],
   ])(
-    "hands an empty collection to TaskNotes in its deployment (%s, %s)",
-    async (environment, connectUrl, origin) => {
+    "hands an empty collection to TaskNotes in its deployment (%s)",
+    async (environment, origin) => {
       vi.stubEnv("VITE_MDBASE_ENV", environment);
-      vi.stubEnv("VITE_MDBASE_CONNECT_URL", connectUrl);
       history.replaceState(
         null,
         "",

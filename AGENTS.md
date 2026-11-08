@@ -3,7 +3,7 @@
 Read `README.md` and `DESIGN.md` before changing user-facing behavior or visuals.
 
 The app consumes the portable `tasknotes.task` contract directly through
-`@mdbase-dev/connect`. Record access must remain contract-scoped even though
+`@mdbase-dev/sdk`. Record access must remain contract-scoped even though
 the app uses full-collection authorization for the saved-view APIs required by
 `tasknotesPlanner` Bases. Do not import source code from the TaskNotes
 application repository. Date, dependency, and field behavior that belongs to

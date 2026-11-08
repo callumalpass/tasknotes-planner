@@ -91,12 +91,6 @@ export interface TaskPropertyUpdate {
   projects?: string[];
 }
 
-export interface PendingPlannerMutation {
-  requestId: string;
-  operation: string;
-  createdAt: string;
-}
-
 /** A write the collection refused after it was saved on this device. */
 export interface RejectedPlannerWrite {
   id: string;
@@ -121,8 +115,6 @@ export interface PlannerRepository {
   ): Promise<PlannerTask>;
   toggleCompletion(task: PlannerTask): Promise<PlannerTask>;
   saveView(input: SavePlannerViewInput): Promise<PlannerView>;
-  pendingMutations?(): readonly PendingPlannerMutation[];
-  recoverPendingMutation?(requestId: string): Promise<void>;
   rejectedWrites?(): readonly RejectedPlannerWrite[];
   dismissRejectedWrite?(id: string): Promise<void>;
   /** True while changes are kept on this device because the collection

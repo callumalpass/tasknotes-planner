@@ -5,12 +5,11 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MdbaseConnectError, type ConnectProblem } from "@mdbase-dev/connect";
+import { MdbaseError } from "@mdbase-dev/sdk";
 
 import { Planner } from "./planner";
 
 import type {
-  PendingPlannerMutation,
   PlannerCollection,
   PlannerRepository,
   PlannerTask,
@@ -20,14 +19,12 @@ import type {
 vi.mock("./gantt-chart", () => ({
   GanttChart: ({
     tasks,
-    mutationsDisabled,
     onCompletionChange,
     onDependenciesChange,
     onScheduleChange,
     onSelect,
   }: {
     tasks: readonly PlannerTask[];
-    mutationsDisabled?: boolean;
     onCompletionChange(task: PlannerTask): Promise<void>;
     onDependenciesChange(
       task: PlannerTask,
@@ -44,7 +41,6 @@ vi.mock("./gantt-chart", () => ({
             Select test task
           </button>
           <button
-            disabled={mutationsDisabled}
             type="button"
             onClick={() =>
               void onScheduleChange(tasks[0], {
@@ -55,7 +51,6 @@ vi.mock("./gantt-chart", () => ({
             Move test task
           </button>
           <button
-            disabled={mutationsDisabled}
             type="button"
             onClick={() =>
               void onDependenciesChange(tasks[0], []).catch(() => undefined)
@@ -64,7 +59,6 @@ vi.mock("./gantt-chart", () => ({
             Change test dependencies
           </button>
           <button
-            disabled={mutationsDisabled}
             type="button"
             onClick={() =>
               void onCompletionChange(tasks[0]).catch(() => undefined)
@@ -134,137 +128,14 @@ describe("Planner connection recovery", () => {
     expect(onChangeCollection).toHaveBeenCalledOnce();
   });
 
-  it("recovers a durable pending handle explicitly and reconciles by loading", async () => {
-    let completeRecovery = () => undefined;
-    let pending: readonly PendingPlannerMutation[] = [
-      {
-        requestId: "request-1",
-        operation: "update",
-        createdAt: "2026-08-23T12:00:00.000Z",
-      },
-    ];
-    const repository = repositoryFixture({
-      pendingMutations: () => pending,
-      recoverPendingMutation: vi.fn(() => {
-        return new Promise<void>((resolve) => {
-          completeRecovery = () => {
-            pending = [];
-            resolve();
-          };
-        });
-      }),
-    });
-    render(
-      <Planner repository={repository} onChangeCollection={() => undefined} />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Recover pending change" }),
-    );
-
-    await waitFor(() =>
-      expect(repository.recoverPendingMutation).toHaveBeenCalledWith(
-        "request-1",
-      ),
-    );
-    expect(screen.getByRole("button", { name: "Recovering…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save view" })).toBeDisabled();
-
-    completeRecovery();
-    await waitFor(() => expect(repository.load).toHaveBeenCalledTimes(2));
-    expect(
-      screen.queryByRole("button", { name: "Recover pending change" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("reconciles a consumed recovery rejection before releasing writes", async () => {
-    let pending: readonly PendingPlannerMutation[] = [pendingMutation()];
-    let finishReload: () => void = () => undefined;
-    let loads = 0;
-    const load = vi.fn(() => {
-      loads += 1;
-      if (loads === 1) return Promise.resolve(structuredClone(collection));
-      return new Promise<PlannerCollection>((resolve) => {
-        finishReload = () => resolve(structuredClone(collection));
-      });
-    });
-    const repository = repositoryFixture({
-      load,
-      pendingMutations: () => pending,
-      recoverPendingMutation: vi.fn(async () => {
-        pending = [];
-        throw new Error("The original update was rejected.");
-      }),
-    });
-    render(
-      <Planner repository={repository} onChangeCollection={() => undefined} />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Recover pending change" }),
-    );
-
-    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("button", { name: "Recovering…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save view" })).toBeDisabled();
-
-    finishReload();
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Recover pending change" }),
-      ).not.toBeInTheDocument(),
-    );
-    expect(screen.getByRole("button", { name: "Save view" })).toBeEnabled();
-  });
-
-  it("retains the write gate without reloading when recovery remains retryable", async () => {
-    const pending = pendingMutation();
-    const repository = repositoryFixture({
-      pendingMutations: () => [pending],
-      recoverPendingMutation: vi.fn(async () => {
-        throw new Error("The connector is temporarily unavailable.");
-      }),
-    });
-    render(
-      <Planner repository={repository} onChangeCollection={() => undefined} />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Recover pending change" }),
-    );
-
-    await waitFor(() =>
-      expect(repository.recoverPendingMutation).toHaveBeenCalledTimes(1),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Recover pending change" }),
-      ).toBeEnabled(),
-    );
-    expect(repository.load).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Save view" })).toBeDisabled();
-  });
-
-  it("keeps an uncertain optimistic schedule until explicit recovery", async () => {
+  it("keeps an uncertain optimistic schedule", async () => {
     const task = plannerTask();
-    let pending: readonly PendingPlannerMutation[] = [];
-    const problem = {
-      problem_version: 1,
-      code: "operation_outcome_unknown",
-      category: "transport",
-      recovery: "recover_mutation",
-      message: "The schedule may already have changed.",
-      operation_outcome: "unknown",
-    } as unknown as ConnectProblem;
     const updateSchedule = vi.fn(async () => {
-      pending = [
-        {
-          requestId: "request-1",
-          operation: "update",
-          createdAt: "2026-08-23T12:00:00.000Z",
-        },
-      ];
-      throw new MdbaseConnectError(problem);
+      throw new MdbaseError({
+        code: "outcome_unknown",
+        recovery: "refresh",
+        message: "The schedule may already have changed.",
+      });
     });
     const repository = repositoryFixture({
       load: vi.fn(async () => ({
@@ -272,8 +143,6 @@ describe("Planner connection recovery", () => {
         tasks: [task],
       })),
       updateSchedule,
-      pendingMutations: () => pending,
-      recoverPendingMutation: vi.fn(),
     });
     render(
       <Planner repository={repository} onChangeCollection={() => undefined} />,
@@ -283,67 +152,12 @@ describe("Planner connection recovery", () => {
       await screen.findByRole("button", { name: "Move test task" }),
     );
 
+    await waitFor(() => expect(updateSchedule).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(screen.getByTestId("scheduled-value")).toHaveTextContent(
         "2026-08-24",
       ),
     );
-    expect(
-      await screen.findByRole("button", { name: "Recover pending change" }),
-    ).toBeInTheDocument();
-    expect(updateSchedule).toHaveBeenCalledTimes(1);
-  });
-
-  it("blocks every subsequent write while a mutation awaits recovery", async () => {
-    const task = plannerTask();
-    const repository = repositoryFixture({
-      load: vi.fn(async () => ({
-        ...structuredClone(collection),
-        tasks: [task],
-      })),
-      pendingMutations: () => [
-        {
-          requestId: "request-1",
-          operation: "update",
-          createdAt: "2026-08-23T12:00:00.000Z",
-        },
-      ],
-      recoverPendingMutation: vi.fn(),
-    });
-    render(
-      <Planner repository={repository} onChangeCollection={() => undefined} />,
-    );
-
-    const ganttWrites = [
-      await screen.findByRole("button", { name: "Move test task" }),
-      screen.getByRole("button", { name: "Change test dependencies" }),
-      screen.getByRole("button", { name: "Complete test task" }),
-    ];
-    for (const button of ganttWrites) {
-      expect(button).toBeDisabled();
-      fireEvent.click(button);
-    }
-
-    expect(
-      screen.getByRole("button", { name: "Recover pending change" }),
-    ).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Save view" })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Select test task" }));
-    expect(
-      document.querySelector<HTMLSelectElement>(
-        ".task-inspector .planning-field select",
-      ),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Save schedule" }),
-    ).toBeDisabled();
-
-    expect(repository.updateSchedule).not.toHaveBeenCalled();
-    expect(repository.updateDependencies).not.toHaveBeenCalled();
-    expect(repository.updateProperties).not.toHaveBeenCalled();
-    expect(repository.toggleCompletion).not.toHaveBeenCalled();
-    expect(repository.saveView).not.toHaveBeenCalled();
   });
 });
 
@@ -416,7 +230,6 @@ function repositoryFixture(
     updateProperties: vi.fn(),
     toggleCompletion: vi.fn(),
     saveView: vi.fn(),
-    pendingMutations: () => [],
     ...overrides,
   };
 }
@@ -450,13 +263,5 @@ function plannerTask(): PlannerTask {
     priorityOptions: [
       { value: "normal", label: "Normal", color: "#64748b", weight: 1 },
     ],
-  };
-}
-
-function pendingMutation(): PendingPlannerMutation {
-  return {
-    requestId: "request-1",
-    operation: "update",
-    createdAt: "2026-08-23T12:00:00.000Z",
   };
 }

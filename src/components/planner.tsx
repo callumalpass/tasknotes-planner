@@ -48,7 +48,6 @@ import { taskNotesHref } from "../data/tasknotes-handoff";
 
 import type {
   PlannerCollection,
-  PendingPlannerMutation,
   RejectedPlannerWrite,
   PlannerRepository,
   PlannerTask,
@@ -95,18 +94,11 @@ export function Planner({
   const [saveError, setSaveError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [todayRequest, setTodayRequest] = useState(0);
-  const [pendingMutations, setPendingMutations] = useState<
-    readonly PendingPlannerMutation[]
-  >([]);
   const [rejectedWrites, setRejectedWrites] = useState<
     readonly RejectedPlannerWrite[]
   >([]);
-  const [recoveringMutation, setRecoveringMutation] = useState("");
-  const [recoveryError, setRecoveryError] = useState("");
   const [collectionActionError, setCollectionActionError] = useState("");
   const refreshTimer = useRef<number | null>(null);
-  const mutationsDisabled =
-    pendingMutations.length > 0 || Boolean(recoveringMutation);
 
   const savedOnDevice = useSyncExternalStore(
     useCallback(
@@ -118,8 +110,7 @@ export function Planner({
   const notice: ConnectionNotice | null =
     connectionNotice ?? (savedOnDevice ? "saved_on_device" : null);
 
-  const refreshPendingMutations = useCallback(() => {
-    setPendingMutations(repository.pendingMutations?.() ?? []);
+  const refreshRejectedWrites = useCallback(() => {
     setRejectedWrites(repository.rejectedWrites?.() ?? []);
   }, [repository]);
 
@@ -138,7 +129,7 @@ export function Planner({
         setShowCompleted(options?.showCompleted ?? false);
         if (options?.zoom !== undefined)
           setZoom(clampZoom(Math.round(options.zoom)));
-        refreshPendingMutations();
+        refreshRejectedWrites();
       } catch (reason) {
         setError(errorMessage(reason));
       } finally {
@@ -146,7 +137,7 @@ export function Planner({
         setRefreshing(false);
       }
     },
-    [activeViewKey, refreshPendingMutations, repository],
+    [activeViewKey, refreshRejectedWrites, repository],
   );
 
   useEffect(() => {
@@ -209,7 +200,6 @@ export function Planner({
   const unscheduled = visibleTasks.filter((task) => !taskSpan(task)).length;
 
   async function saveSchedule(task: PlannerTask, update: ScheduleUpdate) {
-    requireMutationsAvailable(mutationsDisabled);
     const previous = task;
     setCollection((current) =>
       replaceCollectionTask(current, withSchedule(task, update)),
@@ -222,7 +212,7 @@ export function Planner({
         setCollection((current) => replaceCollectionTask(current, previous));
       throw reason;
     } finally {
-      refreshPendingMutations();
+      refreshRejectedWrites();
     }
   }
 
@@ -230,7 +220,6 @@ export function Planner({
     task: PlannerTask,
     dependencies: readonly TaskDependency[],
   ) {
-    requireMutationsAvailable(mutationsDisabled);
     const previous = task;
     setCollection((current) =>
       replaceCollectionTask(current, { ...task, blockedBy: [...dependencies] }),
@@ -243,49 +232,25 @@ export function Planner({
         setCollection((current) => replaceCollectionTask(current, previous));
       throw reason;
     } finally {
-      refreshPendingMutations();
+      refreshRejectedWrites();
     }
   }
 
   async function saveProperties(task: PlannerTask, update: TaskPropertyUpdate) {
-    requireMutationsAvailable(mutationsDisabled);
     try {
       const saved = await repository.updateProperties(task, update);
       setCollection((current) => replaceCollectionTask(current, saved));
     } finally {
-      refreshPendingMutations();
+      refreshRejectedWrites();
     }
   }
 
   async function toggleCompletion(task: PlannerTask) {
-    requireMutationsAvailable(mutationsDisabled);
     try {
       const saved = await repository.toggleCompletion(task);
       setCollection((current) => replaceCollectionTask(current, saved));
     } finally {
-      refreshPendingMutations();
-    }
-  }
-
-  async function recoverMutation(requestId: string) {
-    if (!repository.recoverPendingMutation) return;
-    setRecoveringMutation(requestId);
-    setRecoveryError("");
-    try {
-      await repository.recoverPendingMutation(requestId);
-      await load(true);
-    } catch (reason) {
-      setRecoveryError(errorMessage(reason));
-      const remaining = repository.pendingMutations?.() ?? [];
-      if (remaining.some((pending) => pending.requestId === requestId)) {
-        setPendingMutations(remaining);
-      } else {
-        // A consumed handle is definitive even when recovery returns a rejection.
-        // Reconcile before releasing the write gate.
-        await load(true);
-      }
-    } finally {
-      setRecoveringMutation("");
+      refreshRejectedWrites();
     }
   }
 
@@ -317,10 +282,6 @@ export function Planner({
 
   async function saveView(event: FormEvent) {
     event.preventDefault();
-    if (mutationsDisabled) {
-      setSaveError(pendingMutationMessage);
-      return;
-    }
     if (!collection || !saveName.trim()) return;
     setSavingView(true);
     setSaveError("");
@@ -343,7 +304,7 @@ export function Planner({
     } catch (reason) {
       setSaveError(errorMessage(reason));
     } finally {
-      refreshPendingMutations();
+      refreshRejectedWrites();
       setSavingView(false);
     }
   }
@@ -391,7 +352,6 @@ export function Planner({
             aria-label="Add task"
             className="add-task-control"
             type="button"
-            disabled={mutationsDisabled}
             onClick={() => setCreateOpen(true)}
           >
             <Plus aria-hidden="true" size={17} />
@@ -402,7 +362,6 @@ export function Planner({
               collection.activeView?.writable ? "Save changes" : "Save view"
             }
             className="save-view-control"
-            disabled={mutationsDisabled}
             type="button"
             onClick={openSaveView}
           >
@@ -553,21 +512,6 @@ export function Planner({
         </p>
       ) : null}
       <CollectionSaveWarning />
-      {pendingMutations.map((pending) => (
-        <aside className="planner-error" key={pending.requestId} role="status">
-          A {pending.operation} may already have completed. Recover its original
-          request before making it again.
-          <button
-            disabled={recoveringMutation === pending.requestId}
-            type="button"
-            onClick={() => void recoverMutation(pending.requestId)}
-          >
-            {recoveringMutation === pending.requestId
-              ? "Recovering…"
-              : "Recover pending change"}
-          </button>
-        </aside>
-      ))}
       {rejectedWrites.map((write) => (
         <aside className="planner-error" key={write.id} role="alert">
           A change wasn’t saved: {write.message}
@@ -576,18 +520,13 @@ export function Planner({
             onClick={() =>
               void repository
                 .dismissRejectedWrite?.(write.id)
-                .finally(refreshPendingMutations)
+                .finally(refreshRejectedWrites)
             }
           >
             Dismiss
           </button>
         </aside>
       ))}
-      {recoveryError ? (
-        <p className="planner-error" role="alert">
-          {recoveryError}
-        </p>
-      ) : null}
       {error ? (
         <p className="planner-error" role="alert">
           Tasks may be out of date. {error}
@@ -603,7 +542,6 @@ export function Planner({
           <button
             className="primary-action"
             type="button"
-            disabled={mutationsDisabled}
             onClick={() => setCreateOpen(true)}
           >
             Add your first task
@@ -621,7 +559,6 @@ export function Planner({
       ) : (
         <GanttChart
           allTasks={collection.tasks}
-          mutationsDisabled={mutationsDisabled}
           selectedId={selectedId}
           tasks={visibleTasks}
           todayRequest={todayRequest}
@@ -639,7 +576,6 @@ export function Planner({
         <TaskInspector
           allTasks={collection.tasks}
           key={selected.id}
-          mutationsDisabled={mutationsDisabled}
           task={selected}
           onClose={() => setSelectedId(null)}
           onSaveDependencies={saveDependencies}
@@ -649,10 +585,9 @@ export function Planner({
       ) : null}
       <TaskCreateDialog
         open={createOpen}
-        disabled={mutationsDisabled}
         repository={repository}
         onClose={() => setCreateOpen(false)}
-        onSettled={refreshPendingMutations}
+        onSettled={refreshRejectedWrites}
         onCreated={(task) => {
           setQuery("");
           setProject("all");
@@ -718,7 +653,7 @@ export function Planner({
               </button>
               <button
                 className="save-action"
-                disabled={savingView || mutationsDisabled || !saveName.trim()}
+                disabled={savingView || !saveName.trim()}
                 type="submit"
               >
                 {savingView ? "Saving…" : "Save view"}
@@ -729,13 +664,6 @@ export function Planner({
       ) : null}
     </main>
   );
-}
-
-const pendingMutationMessage =
-  "Recover the pending change before making another collection change.";
-
-function requireMutationsAvailable(disabled: boolean): void {
-  if (disabled) throw new Error(pendingMutationMessage);
 }
 
 function replaceCollectionTask(
