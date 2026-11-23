@@ -1,6 +1,6 @@
 # TaskNotes Planner
 
-Read `README.md` and `DESIGN.md` before changing user-facing behavior or visuals.
+Read `README.md` before changing user-facing behavior or visuals.
 
 The app consumes the portable `tasknotes.task` contract directly through
 `@mdbase-dev/sdk`. Record access must remain contract-scoped even though
